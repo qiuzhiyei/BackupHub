@@ -242,10 +242,7 @@ export async function snapshotView(p: { params: Record<string, string> }): Promi
       ),
       el("div", { class: "ti-meta" },
         el("div", { class: "ti-time" }, chatTime(t.last_date)),
-        el("div", { class: "ti-tags" },
-          t.unread ? el("span", { class: "ti-unread" }, String(t.unread)) : "",
-          el("span", { class: "ti-count" }, `${t.count}`),
-        ),
+        el("span", { class: "ti-count" }, `${t.count}`),
       ),
     );
   }
@@ -298,12 +295,21 @@ export async function snapshotView(p: { params: Record<string, string> }): Promi
 
   async function loadOlder(tid: number) {
     if (msgPage <= 1) return;
-    msgPage--;
-    const first = smsMsgListEl.firstElementChild as HTMLElement | null;
-    if (first && first.classList.contains("msg-load")) first.remove();
-    const prevH = smsMsgListEl.scrollHeight;
+    // 先把按钮置为加载中，避免期间界面跳动
+    const loadBtn = smsMsgListEl.firstElementChild as HTMLButtonElement | null;
+    if (loadBtn && loadBtn.classList.contains("msg-load")) {
+      loadBtn.textContent = "加载中…";
+      loadBtn.disabled = true;
+    }
+    const nextPage = msgPage - 1;
     try {
-      const res = await api.getSmsThread(s.id, tid, msgPage, MSG_PAGE);
+      const res = await api.getSmsThread(s.id, tid, nextPage, MSG_PAGE);
+      msgPage = nextPage;
+      // 关键：记录锚点 -> 同步插入 -> 同步校正滚动，全部在同一帧内完成，避免闪跳
+      const prevH = smsMsgListEl.scrollHeight;
+      const prevTop = smsMsgListEl.scrollTop;
+      const oldBtn = smsMsgListEl.firstElementChild as HTMLElement | null;
+      if (oldBtn && oldBtn.classList.contains("msg-load")) oldBtn.remove();
       const frag = document.createDocumentFragment();
       if (msgPage > 1) {
         frag.appendChild(el("button", {
@@ -313,10 +319,17 @@ export async function snapshotView(p: { params: Record<string, string> }): Promi
       }
       for (const m of res.items) frag.appendChild(smsBubble(m));
       smsMsgListEl.insertBefore(frag, smsMsgListEl.firstChild);
+      // 原可见内容被向下推了 added 像素，scrollTop 同步增加，视觉位置保持不动
       const added = smsMsgListEl.scrollHeight - prevH;
-      smsMsgListEl.scrollTop = smsMsgListEl.scrollTop + added;
+      smsMsgListEl.scrollTop = prevTop + added;
     } catch (e) {
       toast("加载失败: " + String(e), "error");
+      // 恢复按钮
+      const btn = smsMsgListEl.firstElementChild as HTMLButtonElement | null;
+      if (btn && btn.classList.contains("msg-load")) {
+        btn.textContent = "↑ 加载更早";
+        btn.disabled = false;
+      }
     }
   }
 
