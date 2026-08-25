@@ -82,6 +82,7 @@ export async function settingsView(): Promise<HTMLElement> {
   wrap.replaceChildren(
     pageHeader("设置"),
     statusBox,
+    renderDiagnostic(),
     el("div", { class: "panel hint-panel" },
       el("h3", {}, "使用提示"),
       el("ul", {},
@@ -89,10 +90,59 @@ export async function settingsView(): Promise<HTMLElement> {
         el("li", {}, "首次连接时手机会弹出授权提示，请允许本电脑调试。"),
         el("li", {}, "若无法识别设备，请在上方手动指定 platform-tools 目录中的 adb.exe 路径。"),
         el("li", {}, "短信/通话/通讯录读取依赖系统 content provider，部分厂商 ROM 可能限制访问。"),
+        el("li", {}, "读不到数据时，用上方「数据访问诊断」查看 content provider 的原始返回/报错。"),
       ),
     ),
   );
 
   void loadStatus();
   return wrap;
+}
+
+function renderDiagnostic(): HTMLElement {
+  const panel = el("div", { class: "panel" });
+  const deviceSelect = el("select", { class: "input" }) as HTMLSelectElement;
+  const out = el("pre", { class: "diag-output" }, "选择设备后点击下方按钮，查看 content provider 的原始返回（含报错）。");
+
+  async function refreshDevices() {
+    try {
+      const list = (await api.listDevices()).filter((d) => d.state === "device");
+      deviceSelect.replaceChildren(...(list.length
+        ? list.map((d) => el("option", { value: d.serial }, `${d.model || d.serial} · ${d.serial}`))
+        : [el("option", { value: "" }, "无可用设备")]));
+    } catch {
+      deviceSelect.replaceChildren(el("option", { value: "" }, "ADB 不可用"));
+    }
+  }
+
+  const runTest = async (uri: string, label: string) => {
+    const serial = deviceSelect.value;
+    if (!serial) { toast("请先选择设备", "error"); return; }
+    out.textContent = `正在查询 ${label} …`;
+    try {
+      const res = await api.diagnoseProvider(serial, uri);
+      out.textContent = res || "(无输出)";
+    } catch (e) {
+      out.textContent = "错误: " + String(e);
+    }
+  };
+
+  panel.replaceChildren(
+    el("div", { class: "panel-head" },
+      el("h3", {}, "数据访问诊断"),
+      el("button", { class: "btn btn-ghost btn-sm", onclick: () => void refreshDevices() }, "刷新设备"),
+    ),
+    el("div", { class: "form-row" },
+      el("label", { class: "form-label" }, "设备"),
+      deviceSelect,
+    ),
+    el("div", { class: "diag-actions" },
+      el("button", { class: "btn btn-ghost", onclick: () => runTest("content://sms", "短信") }, "测试短信"),
+      el("button", { class: "btn btn-ghost", onclick: () => runTest("content://call_log/calls", "通话") }, "测试通话"),
+      el("button", { class: "btn btn-ghost", onclick: () => runTest("content://com.android.contacts/data", "通讯录") }, "测试通讯录"),
+    ),
+    out,
+  );
+  void refreshDevices();
+  return panel;
 }

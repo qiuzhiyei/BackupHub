@@ -74,6 +74,17 @@ pub fn list_devices(state: State<AppState>) -> Result<Vec<DeviceStatus>, String>
     adb::list_devices(&adb)
 }
 
+/// 诊断：对指定 content uri 做原始查询，返回 stdout+stderr，便于定位读不到数据的原因
+#[tauri::command]
+pub fn diagnose_provider(
+    serial: String,
+    uri: String,
+    state: State<AppState>,
+) -> Result<String, String> {
+    let adb = resolve_adb(&state)?;
+    adb::query_raw(&adb, &serial, &uri)
+}
+
 #[tauri::command]
 pub fn list_device_records(state: State<AppState>) -> Result<Vec<DeviceRecord>, String> {
     let mut devices = state.storage.load_devices();
@@ -102,7 +113,7 @@ pub fn get_snapshot(id: String, state: State<AppState>) -> Result<Option<BackupS
 }
 
 #[tauri::command]
-pub fn backup_start(
+pub async fn backup_start(
     app: AppHandle,
     state: State<'_, AppState>,
     serial: String,
@@ -111,7 +122,14 @@ pub fn backup_start(
     note: String,
 ) -> Result<BackupSnapshot, String> {
     let adb = resolve_adb(&state)?;
-    backup::perform_backup(&app, &state.storage, &adb, &serial, &options, &custom_name, &note)
+    let storage = state.storage.clone();
+    let res: Result<BackupSnapshot, String> =
+        tauri::async_runtime::spawn_blocking(move || {
+            backup::perform_backup(&app, &storage, &adb, &serial, &options, &custom_name, &note)
+        })
+        .await
+        .map_err(|e| format!("备份任务异常: {}", e))?;
+    res
 }
 
 #[tauri::command]

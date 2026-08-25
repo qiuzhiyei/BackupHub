@@ -125,14 +125,14 @@ pub fn perform_backup(
 fn collect_sms(adb: &PathBuf, serial: &str, app: &AppHandle) -> Result<Vec<Sms>, String> {
     let mut result: Vec<Sms> = Vec::new();
 
-    // SMS
+    // SMS（不使用 --sort，避免 adb shell 按空格拼接参数破坏查询；改为本地排序）
     let rows = adb::query_provider(
         adb,
         serial,
         "content://sms",
-        &["address", "body", "date", "type", "read", "thread_id", "protocol"],
+        &["address", "body", "date", "type", "read", "thread_id"],
         None,
-        Some("date DESC"),
+        None,
     )?;
     let total = rows.len();
     for (i, row) in rows.iter().enumerate() {
@@ -218,7 +218,7 @@ fn collect_calls(adb: &PathBuf, serial: &str, app: &AppHandle) -> Result<Vec<Cal
         "content://call_log/calls",
         &["number", "duration", "date", "type", "name"],
         None,
-        Some("date DESC"),
+        None,
     )?;
     let total = rows.len();
     let mut result = Vec::with_capacity(total);
@@ -240,6 +240,8 @@ fn collect_calls(adb: &PathBuf, serial: &str, app: &AppHandle) -> Result<Vec<Cal
             });
         }
     }
+    // 按时间倒序
+    result.sort_by(|a, b| b.date.cmp(&a.date));
     Ok(result)
 }
 

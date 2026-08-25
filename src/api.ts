@@ -28,6 +28,10 @@ export async function listDevices(): Promise<DeviceStatus[]> {
   return invoke<DeviceStatus[]>("list_devices");
 }
 
+export async function diagnoseProvider(serial: string, uri: string): Promise<string> {
+  return invoke<string>("diagnose_provider", { serial, uri });
+}
+
 export async function listDeviceRecords(): Promise<DeviceRecord[]> {
   return invoke<DeviceRecord[]>("list_device_records");
 }

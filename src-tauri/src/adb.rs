@@ -165,8 +165,22 @@ pub fn list_devices(adb: &PathBuf) -> Result<Vec<DeviceStatus>, String> {
     Ok(result)
 }
 
+/// 执行 adb 命令，返回 (stdout, stderr, 是否成功)
+fn run_adb_raw(adb: &PathBuf, args: &[&str]) -> Result<(String, String, bool), String> {
+    let mut cmd = Command::new(adb);
+    for a in args {
+        cmd.arg(a);
+    }
+    let out = cmd.output().map_err(|e| format!("无法执行 adb: {}", e))?;
+    Ok((
+        String::from_utf8_lossy(&out.stdout).to_string(),
+        String::from_utf8_lossy(&out.stderr).to_string(),
+        out.status.success(),
+    ))
+}
+
 /// 查询 content provider，返回每行 key=>value 的 map 列表
-/// projection 为有序列名，解析时按此顺序定位列边界，能正确处理含逗号的值
+/// projection 为有序列名，解析时按此顺序定位列边界，能正确处理含逗号/换行的值
 pub fn query_provider(
     adb: &PathBuf,
     serial: &str,
@@ -197,25 +211,77 @@ pub fn query_provider(
         args.push(s.into());
     }
     let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-    let out = run_adb(adb, &arg_refs)?;
+    let (stdout, stderr, _ok) = run_adb_raw(adb, &arg_refs)?;
 
-    let mut rows = Vec::new();
-    for line in out.lines() {
-        let line = line.trim();
-        if let Some(rest) = line.strip_prefix("Row:") {
-            // 跳过行号
-            let rest = rest.trim_start();
-            let row_content = match rest.find(' ') {
-                Some(i) => &rest[i..].trim_start(),
-                None => rest.trim(),
-            };
-            let map = parse_row(row_content, projection);
-            if !map.is_empty() {
-                rows.push(map);
+    // 解析行：一条记录可能因 body 含换行而跨多行，
+    // 故以 "Row:" 开头作为记录起点，后续非 "Row:" 行视为续行并入当前记录
+    let mut rows: Vec<HashMap<String, String>> = Vec::new();
+    let mut current: Option<String> = None;
+    for line in stdout.lines() {
+        if line.starts_with("Row:") {
+            if let Some(buf) = current.take() {
+                push_parsed(&mut rows, &buf, projection);
             }
+            current = Some(line.to_string());
+        } else if let Some(buf) = current.as_mut() {
+            buf.push('\n');
+            buf.push_str(line);
+        }
+    }
+    if let Some(buf) = current {
+        push_parsed(&mut rows, &buf, projection);
+    }
+
+    // 没有数据行时：若 stderr 有内容（如 SecurityException 堆栈），作为错误抛出，
+    // 避免静默返回 0 条；表本身为空(stderr 为空)时返回 Ok(空)
+    if rows.is_empty() {
+        let err = stderr.trim();
+        if !err.is_empty() {
+            return Err(err.to_string());
         }
     }
     Ok(rows)
+}
+
+fn push_parsed(rows: &mut Vec<HashMap<String, String>>, raw: &str, projection: &[&str]) {
+    let rest = match raw.strip_prefix("Row:") {
+        Some(r) => r,
+        None => return,
+    };
+    let rest = rest.trim_start();
+    // 跳过行号
+    let row_content = match rest.find(' ') {
+        Some(i) => rest[i..].trim_start(),
+        None => rest.trim(),
+    };
+    let map = parse_row(row_content, projection);
+    if !map.is_empty() {
+        rows.push(map);
+    }
+}
+
+/// 诊断：对指定 uri 执行 content query，返回原始 stdout+stderr（截断）
+pub fn query_raw(adb: &PathBuf, serial: &str, uri: &str) -> Result<String, String> {
+    let args: Vec<&str> = vec!["-s", serial, "shell", "content", "query", "--uri", uri];
+    let (stdout, stderr, ok) = run_adb_raw(adb, &args)?;
+    let mut combined = String::new();
+    combined.push_str("[exit ok] ");
+    combined.push_str(if ok { "true" } else { "false" });
+    combined.push('\n');
+    if !stdout.trim().is_empty() {
+        combined.push_str("--- stdout ---\n");
+        combined.push_str(&stdout);
+        if combined.chars().filter(|c| *c == '\n').count() > 60 {
+            // 截断过长输出
+            combined = combined.chars().take(4000).collect::<String>();
+            combined.push_str("\n...(已截断)\n");
+        }
+    }
+    if !stderr.trim().is_empty() {
+        combined.push_str("--- stderr ---\n");
+        combined.push_str(&stderr);
+    }
+    Ok(combined)
 }
 
 /// 解析单行: 已知有序列名，按列名边界切片，兼容值中含逗号

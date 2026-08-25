@@ -28,6 +28,7 @@ pub fn run() {
             commands::adb_status,
             commands::set_adb_path,
             commands::list_devices,
+            commands::diagnose_provider,
             commands::list_device_records,
             commands::list_snapshots,
             commands::get_snapshot,

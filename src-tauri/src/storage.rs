@@ -15,6 +15,14 @@ pub struct Storage {
     base: PathBuf,
 }
 
+impl Clone for Storage {
+    fn clone(&self) -> Self {
+        Self {
+            base: self.base.clone(),
+        }
+    }
+}
+
 impl Storage {
     pub fn new(app_data_dir: &Path) -> Self {
         let base = app_data_dir.join("BackupHub");

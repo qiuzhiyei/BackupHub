@@ -995,6 +995,28 @@ body {
   margin: 4px 0;
 }
 
+/* ---------- 诊断 ---------- */
+.diag-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.diag-output {
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 12px;
+  font-family: "Cascadia Code", "Consolas", "SF Mono", Menlo, monospace;
+  font-size: 12.5px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 320px;
+  overflow: auto;
+  margin: 0;
+  color: var(--text);
+}
+
 /* ---------- 进度 ---------- */
 .progress-stage {
   display: flex;
