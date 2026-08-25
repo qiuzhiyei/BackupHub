@@ -109,6 +109,19 @@ pub struct ProgressPayload {
     pub message: String,
 }
 
+/// 短信会话（按 thread_id 聚合）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SmsThread {
+    pub thread_id: i64,
+    pub address: String,
+    /// 从通讯录匹配到的姓名（无则为 None）
+    pub name: Option<String>,
+    pub last_body: String,
+    pub last_date: i64,
+    pub count: usize,
+    pub unread: usize,
+}
+
 /// 分页查询参数
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PageQuery {

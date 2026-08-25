@@ -1,12 +1,14 @@
 import { el, esc, fmtDate, fmtDuration, toast } from "../dom";
 import { navigate } from "../router";
 import * as api from "../api";
-import type { BackupSnapshot, CallLog, Contact, PageResult, Sms } from "../types";
+import type { BackupSnapshot, CallLog, Contact, PageResult, Sms, SmsThread } from "../types";
 import { createFilterBar, createPagination, emptyState, pageHeader, statChip } from "./components";
 import { promptDialog, chooseDialog } from "../modal";
 
 type Tab = "sms" | "calls" | "contacts";
 const PAGE_SIZE = 50;
+const THREAD_PAGE = 30;
+const MSG_PAGE = 50;
 
 export async function snapshotView(p: { params: Record<string, string> }): Promise<HTMLElement> {
   const id = p.params.id;
@@ -31,6 +33,18 @@ export async function snapshotView(p: { params: Record<string, string> }): Promi
   let page = 1;
   let filters = { search: "", dateFrom: null as number | null, dateTo: null as number | null };
   let debounceT: number | undefined;
+
+  // SMS 会话视图状态
+  let threadPage = 1;
+  let threadSearch = "";
+  let selectedThreadId: number | null = null;
+  let lastThreads: SmsThread[] = [];
+  let msgPage = 1;
+  let msgTotalPages = 1;
+  let smsThreadListEl: HTMLElement;
+  let smsThreadPagerEl: HTMLElement;
+  let smsMsgHeadEl: HTMLElement;
+  let smsMsgListEl: HTMLElement;
 
   const tabsEl = el("div", { class: "tabs" },
     tabBtn("sms", "短信", `✉️ ${s.sms_count}`, s.sms_count > 0),
@@ -83,7 +97,6 @@ export async function snapshotView(p: { params: Record<string, string> }): Promi
     pageEl,
   );
 
-  // 编辑名称
   wrap.querySelector(".stat-edit")?.addEventListener("click", async () => {
     const name = await promptDialog("请输入设备名称", s.custom_name || s.device_model || "", "编辑设备名称");
     if (name !== null) {
@@ -94,20 +107,25 @@ export async function snapshotView(p: { params: Record<string, string> }): Promi
   });
 
   function tabBtn(t: Tab, label: string, count: string, enabled: boolean): HTMLElement {
-    const btn = el("button", {
+    return el("button", {
       class: `tab-btn ${tab === t ? "active" : ""} ${enabled ? "" : "disabled"}`,
       onclick: () => switchTab(t),
     },
       el("span", { class: "tab-label" }, label),
       el("span", { class: "tab-count" }, count),
     );
-    return btn;
   }
 
   function switchTab(t: Tab) {
     if (t === tab) return;
     tab = t;
-    page = 1;
+    if (t === "sms") {
+      threadPage = 1;
+      threadSearch = "";
+      selectedThreadId = null;
+    } else {
+      page = 1;
+    }
     tabsEl.querySelectorAll(".tab-btn").forEach((b, i) => {
       b.classList.toggle("active", (["sms", "calls", "contacts"] as Tab[])[i] === t);
     });
@@ -117,11 +135,17 @@ export async function snapshotView(p: { params: Record<string, string> }): Promi
 
   function renderToolbar() {
     toolbarEl.replaceChildren();
-    const withDate = tab !== "contacts";
+    const withDate = tab === "calls";
     const bar = createFilterBar(withDate);
     bar.setOnApply(() => {
-      filters = bar.getFilters();
-      page = 1;
+      const f = bar.getFilters();
+      if (tab === "sms") {
+        threadSearch = f.search;
+        threadPage = 1;
+      } else {
+        filters = f;
+        page = 1;
+      }
       if (debounceT) clearTimeout(debounceT);
       debounceT = window.setTimeout(() => void fetchData(), 220);
     });
@@ -129,54 +153,200 @@ export async function snapshotView(p: { params: Record<string, string> }): Promi
   }
 
   async function fetchData() {
+    if (tab === "sms") {
+      pageEl.replaceChildren();
+      await fetchThreads();
+      return;
+    }
     const q = { snapshot_id: s.id, page, page_size: PAGE_SIZE, search: filters.search, date_from: filters.dateFrom, date_to: filters.dateTo };
     contentEl.replaceChildren(el("div", { class: "loading-row" }, "加载中…"));
     pageEl.replaceChildren();
     try {
-      if (tab === "sms") {
-        const res = await api.querySms(q);
-        renderSms(res);
-      } else if (tab === "calls") {
-        const res = await api.queryCalls(q);
-        renderCalls(res);
+      if (tab === "calls") {
+        renderCalls(await api.queryCalls(q));
       } else {
-        const res = await api.queryContacts(q);
-        renderContacts(res);
+        renderContacts(await api.queryContacts(q));
       }
     } catch (e) {
       contentEl.replaceChildren(emptyState("加载失败", String(e)));
     }
   }
 
-  function renderSms(res: PageResult<Sms>) {
-    if (!res.items.length) {
-      contentEl.replaceChildren(emptyState("没有短信记录", "尝试调整筛选条件"));
-      return;
-    }
-    const list = el("div", { class: "sms-list" },
-      ...res.items.map((m) => smsBubble(m)),
-    );
-    contentEl.replaceChildren(list);
-    renderPagination(res);
-  }
-
-  function smsBubble(m: Sms): HTMLElement {
-    const sent = m.sms_type === 2;
-    return el("div", { class: `sms-row ${sent ? "sent" : "recv"}` },
-      el("div", { class: "bubble" },
-        el("div", { class: "bubble-head" },
-          el("span", { class: "bubble-addr" }, esc(m.address || (sent ? "我" : "未知号码"))),
-          el("span", { class: "bubble-tags" },
-            m.protocol === "mms" ? el("span", { class: "tag tag-mms" }, "MMS") : "",
-            m.read === 0 ? el("span", { class: "tag tag-unread" }, "未读") : "",
-          ),
-        ),
-        el("div", { class: "bubble-body" }, esc(m.body)),
-        el("div", { class: "bubble-time" }, fmtDate(m.date)),
+  // ---------- 短信：会话视图 ----------
+  function buildSmsShell(): HTMLElement {
+    smsThreadListEl = el("div", { class: "thread-list" }, emptyState("加载中…"));
+    smsThreadPagerEl = el("div", { class: "thread-list-pager" });
+    smsMsgHeadEl = el("div", { class: "thread-view-head" }, "选择会话");
+    smsMsgListEl = el("div", { class: "msg-list" }, emptyState("选择左侧会话查看短信"));
+    return el("div", { class: "sms-chat" },
+      el("div", { class: "thread-list-pane" },
+        smsThreadListEl,
+        smsThreadPagerEl,
+      ),
+      el("div", { class: "thread-view-pane" },
+        smsMsgHeadEl,
+        smsMsgListEl,
       ),
     );
   }
 
+  async function fetchThreads() {
+    contentEl.replaceChildren(el("div", { class: "loading-row" }, "加载会话…"));
+    try {
+      const res = await api.listSmsThreads({
+        snapshot_id: s.id, page: threadPage, page_size: THREAD_PAGE,
+        search: threadSearch, date_from: null, date_to: null,
+      });
+      lastThreads = res.items;
+      contentEl.replaceChildren(buildSmsShell());
+      renderThreadList(res);
+      smsThreadPagerEl.replaceChildren(
+        createPagination(threadPage, res.total, THREAD_PAGE, (pg) => {
+          threadPage = pg;
+          selectedThreadId = null;
+          void fetchData();
+        }),
+      );
+      if (selectedThreadId === null && res.items.length) {
+        selectedThreadId = res.items[0].thread_id;
+      }
+      if (selectedThreadId !== null) {
+        void loadThreadMessages(selectedThreadId);
+      } else {
+        smsMsgHeadEl.replaceChildren("选择会话");
+        smsMsgListEl.replaceChildren(emptyState(res.items.length ? "选择左侧会话查看短信" : "没有会话"));
+      }
+    } catch (e) {
+      contentEl.replaceChildren(emptyState("加载失败", String(e)));
+    }
+  }
+
+  function renderThreadList(res: PageResult<SmsThread>) {
+    if (!res.items.length) {
+      smsThreadListEl.replaceChildren(emptyState("没有会话", threadSearch ? "试试其他关键词" : "该快照无短信"));
+      return;
+    }
+    smsThreadListEl.replaceChildren(...res.items.map((t) => threadItem(t)));
+  }
+
+  function threadItem(t: SmsThread): HTMLElement {
+    const name = t.name || t.address || "未知";
+    return el("div", {
+      class: `thread-item ${t.thread_id === selectedThreadId ? "active" : ""}`,
+      dataset: { tid: String(t.thread_id) },
+      onclick: () => selectThread(t.thread_id),
+    },
+      el("div", { class: "ti-main" },
+        el("div", { class: "ti-name" }, esc(name)),
+        el("div", { class: "ti-preview" }, esc(t.last_body || "")),
+      ),
+      el("div", { class: "ti-meta" },
+        el("div", { class: "ti-time" }, chatTime(t.last_date)),
+        el("div", { class: "ti-tags" },
+          t.unread ? el("span", { class: "ti-unread" }, String(t.unread)) : "",
+          el("span", { class: "ti-count" }, `${t.count}`),
+        ),
+      ),
+    );
+  }
+
+  function selectThread(tid: number) {
+    selectedThreadId = tid;
+    smsThreadListEl.querySelectorAll(".thread-item").forEach((it) => {
+      const el2 = it as HTMLElement;
+      el2.classList.toggle("active", el2.dataset.tid === String(tid));
+    });
+    void loadThreadMessages(tid);
+  }
+
+  async function loadThreadMessages(tid: number) {
+    smsMsgHeadEl.replaceChildren("加载中…");
+    smsMsgListEl.replaceChildren(el("div", { class: "loading-row" }, "加载中…"));
+    try {
+      const first = await api.getSmsThread(s.id, tid, 1, MSG_PAGE);
+      msgTotalPages = Math.max(1, Math.ceil(first.total / MSG_PAGE));
+      msgPage = msgTotalPages;
+      const res = msgTotalPages === 1 ? first : await api.getSmsThread(s.id, tid, msgPage, MSG_PAGE);
+      renderMessages(tid, res);
+    } catch (e) {
+      smsMsgListEl.replaceChildren(emptyState("加载失败", String(e)));
+    }
+  }
+
+  function renderMessages(tid: number, res: PageResult<Sms>) {
+    const thread = lastThreads.find((t) => t.thread_id === tid);
+    const title = thread?.name || thread?.address || "会话";
+    smsMsgHeadEl.replaceChildren(
+      el("div", { class: "tv-title" }, esc(title)),
+      el("div", { class: "tv-count" }, thread ? `${thread.count} 条` : ""),
+    );
+    if (!res.items.length) {
+      smsMsgListEl.replaceChildren(emptyState("该会话没有消息"));
+      return;
+    }
+    const nodes: (Node | string)[] = [];
+    if (msgPage > 1) {
+      nodes.push(el("button", {
+        class: "btn btn-ghost btn-block msg-load",
+        onclick: () => void loadOlder(tid),
+      }, "↑ 加载更早"));
+    }
+    for (const m of res.items) nodes.push(smsBubble(m));
+    smsMsgListEl.replaceChildren(...nodes);
+    smsMsgListEl.scrollTop = smsMsgListEl.scrollHeight;
+  }
+
+  async function loadOlder(tid: number) {
+    if (msgPage <= 1) return;
+    msgPage--;
+    const first = smsMsgListEl.firstElementChild as HTMLElement | null;
+    if (first && first.classList.contains("msg-load")) first.remove();
+    const prevH = smsMsgListEl.scrollHeight;
+    try {
+      const res = await api.getSmsThread(s.id, tid, msgPage, MSG_PAGE);
+      const frag = document.createDocumentFragment();
+      if (msgPage > 1) {
+        frag.appendChild(el("button", {
+          class: "btn btn-ghost btn-block msg-load",
+          onclick: () => void loadOlder(tid),
+        }, "↑ 加载更早"));
+      }
+      for (const m of res.items) frag.appendChild(smsBubble(m));
+      smsMsgListEl.insertBefore(frag, smsMsgListEl.firstChild);
+      const added = smsMsgListEl.scrollHeight - prevH;
+      smsMsgListEl.scrollTop = smsMsgListEl.scrollTop + added;
+    } catch (e) {
+      toast("加载失败: " + String(e), "error");
+    }
+  }
+
+  function smsBubble(m: Sms): HTMLElement {
+    const sent = m.sms_type === 2;
+    return el("div", { class: `msg-row ${sent ? "sent" : "recv"}` },
+      el("div", { class: "bubble" },
+        el("div", { class: "bubble-body" }, esc(m.body)),
+        el("div", { class: "bubble-time" }, msgTime(m.date)),
+      ),
+    );
+  }
+
+  function chatTime(ms: number): string {
+    if (!ms) return "";
+    const d = new Date(ms);
+    const now = new Date();
+    const p = (n: number) => String(n).padStart(2, "0");
+    if (d.toDateString() === now.toDateString()) return `${p(d.getHours())}:${p(d.getMinutes())}`;
+    return `${d.getMonth() + 1}/${d.getDate()}`;
+  }
+
+  function msgTime(ms: number): string {
+    if (!ms) return "";
+    const d = new Date(ms);
+    const p = (n: number) => String(n).padStart(2, "0");
+    return `${d.getMonth() + 1}/${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  }
+
+  // ---------- 通话 ----------
   function renderCalls(res: PageResult<CallLog>) {
     if (!res.items.length) {
       contentEl.replaceChildren(emptyState("没有通话记录"));
@@ -208,6 +378,7 @@ export async function snapshotView(p: { params: Record<string, string> }): Promi
     renderPagination(res);
   }
 
+  // ---------- 通讯录 ----------
   function renderContacts(res: PageResult<Contact>) {
     if (!res.items.length) {
       contentEl.replaceChildren(emptyState("没有联系人"));

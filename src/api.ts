@@ -14,6 +14,7 @@ import type {
   PageResult,
   ProgressPayload,
   Sms,
+  SmsThread,
 } from "./types";
 
 export async function adbStatus(): Promise<AdbStatus> {
@@ -79,6 +80,24 @@ export async function updateSnapshotCustomName(
 
 export async function querySms(query: PageQuery): Promise<PageResult<Sms>> {
   return invoke<PageResult<Sms>>("query_sms", { query });
+}
+
+export async function listSmsThreads(query: PageQuery): Promise<PageResult<SmsThread>> {
+  return invoke<PageResult<SmsThread>>("list_sms_threads", { query });
+}
+
+export async function getSmsThread(
+  snapshotId: string,
+  threadId: number,
+  page: number,
+  pageSize: number,
+): Promise<PageResult<Sms>> {
+  return invoke<PageResult<Sms>>("get_sms_thread", {
+    snapshotId,
+    threadId,
+    page,
+    pageSize,
+  });
 }
 
 export async function queryCalls(query: PageQuery): Promise<PageResult<CallLog>> {

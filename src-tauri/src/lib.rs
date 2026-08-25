@@ -39,6 +39,8 @@ pub fn run() {
             commands::update_snapshot_custom_name,
             commands::export_snapshot,
             commands::query_sms,
+            commands::list_sms_threads,
+            commands::get_sms_thread,
             commands::query_calls,
             commands::query_contacts,
         ])

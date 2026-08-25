@@ -68,6 +68,17 @@ export interface Sms {
   protocol: string;
 }
 
+export interface SmsThread {
+  thread_id: number;
+  address: string;
+  /** 从通讯录匹配到的姓名 */
+  name: string | null;
+  last_body: string;
+  last_date: number;
+  count: number;
+  unread: number;
+}
+
 export interface CallLog {
   number: string;
   duration: number;

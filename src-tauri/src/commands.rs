@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 use tauri::{AppHandle, State};
@@ -6,7 +7,8 @@ use crate::adb;
 use crate::backup;
 use crate::export;
 use crate::models::{
-    BackupOptions, BackupSnapshot, DeviceRecord, DeviceStatus, PageQuery, PageResult,
+    BackupOptions, BackupSnapshot, Contact, DeviceRecord, DeviceStatus, PageQuery, PageResult,
+    Sms, SmsThread,
 };
 use crate::storage::{AppConfig, Storage};
 
@@ -214,6 +216,127 @@ pub fn query_contacts(
     let mut list = state.storage.load_contacts(&snap.device_serial, &query.snapshot_id);
     apply_contact_filter(&mut list, &query);
     Ok(paginate(&list, query.page, query.page_size))
+}
+
+#[tauri::command]
+pub fn list_sms_threads(query: PageQuery, state: State<AppState>) -> Result<PageResult<SmsThread>, String> {
+    let snap = state
+        .storage
+        .get_snapshot(&query.snapshot_id)
+        .ok_or_else(|| "快照不存在".to_string())?;
+    let sms = state.storage.load_sms(&snap.device_serial, &query.snapshot_id);
+    let contacts = state.storage.load_contacts(&snap.device_serial, &query.snapshot_id);
+    let names = build_phone_name_map(&contacts);
+
+    // 按 thread_id 聚合
+    let mut groups: HashMap<i64, Vec<Sms>> = HashMap::new();
+    for s in &sms {
+        groups.entry(s.thread_id).or_default().push(s.clone());
+    }
+    let mut threads: Vec<SmsThread> = groups
+        .into_iter()
+        .map(|(tid, mut msgs)| {
+            msgs.sort_by_key(|m| m.date);
+            let last = msgs.last().expect("non-empty group");
+            let address = msgs
+                .iter()
+                .rev()
+                .find(|m| !m.address.is_empty())
+                .map(|m| m.address.clone())
+                .unwrap_or_default();
+            let name = resolve_name(&address, &names);
+            let unread = msgs.iter().filter(|m| m.read == 0 && m.sms_type == 1).count();
+            SmsThread {
+                thread_id: tid,
+                address,
+                name,
+                last_body: truncate_str(&last.body, 50),
+                last_date: last.date,
+                count: msgs.len(),
+                unread,
+            }
+        })
+        .collect();
+
+    if !query.search.is_empty() {
+        let k = query.search.to_lowercase();
+        threads.retain(|t| {
+            t.address.to_lowercase().contains(&k)
+                || t.name.as_deref().unwrap_or("").to_lowercase().contains(&k)
+                || t.last_body.to_lowercase().contains(&k)
+        });
+    }
+    threads.sort_by(|a, b| b.last_date.cmp(&a.last_date));
+    Ok(paginate(&threads, query.page, query.page_size))
+}
+
+#[tauri::command]
+pub fn get_sms_thread(
+    snapshot_id: String,
+    thread_id: i64,
+    page: usize,
+    page_size: usize,
+    state: State<AppState>,
+) -> Result<PageResult<Sms>, String> {
+    let snap = state
+        .storage
+        .get_snapshot(&snapshot_id)
+        .ok_or_else(|| "快照不存在".to_string())?;
+    let sms = state.storage.load_sms(&snap.device_serial, &snapshot_id);
+    let mut list: Vec<Sms> = sms
+        .iter()
+        .filter(|s| s.thread_id == thread_id)
+        .cloned()
+        .collect();
+    list.sort_by_key(|m| m.date);
+    Ok(paginate(&list, page, page_size))
+}
+
+fn normalize_phone(p: &str) -> String {
+    let mut s = p.trim().to_string();
+    if s.starts_with("+86") {
+        s = s[3..].to_string();
+    } else if s.starts_with("86") && s.len() == 13 {
+        s = s[2..].to_string();
+    }
+    s.retain(|c| c.is_ascii_digit());
+    s
+}
+
+fn build_phone_name_map(contacts: &[Contact]) -> HashMap<String, String> {
+    let mut m = HashMap::new();
+    for c in contacts {
+        for p in &c.phones {
+            let n = normalize_phone(p);
+            if !n.is_empty() && !m.contains_key(&n) {
+                m.insert(n, c.name.clone());
+            }
+        }
+    }
+    m
+}
+
+fn resolve_name(address: &str, map: &HashMap<String, String>) -> Option<String> {
+    if address.trim().is_empty() {
+        return None;
+    }
+    let n = normalize_phone(address);
+    if !n.is_empty() {
+        if let Some(name) = map.get(&n) {
+            return Some(name.clone());
+        }
+    }
+    None
+}
+
+fn truncate_str(s: &str, max: usize) -> String {
+    let s = s.trim();
+    if s.chars().count() <= max {
+        return s.to_string();
+    }
+    let mut out: String = s.chars().take(max).collect();
+    out.push('…');
+    out
 }
 
 fn apply_sms_filter(list: &mut Vec<crate::models::Sms>, q: &PageQuery) {
