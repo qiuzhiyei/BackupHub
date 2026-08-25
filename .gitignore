@@ -8,6 +8,9 @@ dist-ssr/
 .npm
 .pnpm-store/
 
+# OpenCode 工具内部状态
+.omo/
+
 # 包管理器锁文件需要跟踪（package-lock.json / Cargo.lock 均保留）
 
 # 日志
