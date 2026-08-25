@@ -782,32 +782,43 @@ body {
 }
 .compact-pager {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  flex-wrap: wrap;
   align-items: center;
+  justify-content: center;
+  gap: 10px;
   font-size: 12px;
 }
 .cp-info {
   color: var(--text-soft);
+  white-space: nowrap;
 }
 .cp-group {
   display: flex;
-  gap: 4px;
+  gap: 6px;
 }
 .cp-jump {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
 }
 .cp-input {
   width: 50px;
-  padding: 4px 6px;
-  font-size: 12px;
+  padding: 5px 6px;
+  font-size: 12.5px;
   text-align: center;
 }
 .cp-btn {
-  padding: 4px 9px;
-  font-size: 12px;
+  padding: 6px 11px;
+  font-size: 13px;
+}
+.cp-lg {
+  padding: 9px 18px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.cp-go {
+  padding: 6px 14px;
+  font-size: 13px;
 }
 .thread-list-loader,
 .thread-list-end {

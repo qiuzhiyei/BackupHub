@@ -163,7 +163,7 @@ export function statChip(label: string, value: string | number, ico = ""): HTMLE
 
 export { fmtDateShort };
 
-/** 紧凑分页器：首页/上一页/下一页/末页 + 跳转到第几页（无数字条） */
+/** 紧凑分页器：上一页/下一页 + 跳转到第几页（无数字条、无首页末页） */
 export function createCompactPager(
   page: number,
   totalPages: number,
@@ -174,7 +174,7 @@ export function createCompactPager(
   const cur = Math.min(Math.max(1, page), tp);
   const btn = (label: string, p: number, disabled: boolean, cls = "") =>
     el("button", {
-      class: `btn btn-sm btn-ghost cp-btn ${cls} ${disabled ? "disabled" : ""}`,
+      class: `btn btn-ghost cp-btn ${cls} ${disabled ? "disabled" : ""}`,
       onclick: () => !disabled && onGo(p),
     }, label);
   const input = el("input", {
@@ -194,14 +194,12 @@ export function createCompactPager(
   return el("div", { class: "compact-pager" },
     el("span", { class: "cp-info" }, `共 ${total} · ${cur}/${tp} 页`),
     el("div", { class: "cp-group" },
-      btn("首页", 1, cur <= 1),
-      btn("‹", cur - 1, cur <= 1),
-      btn("›", cur + 1, cur >= tp),
-      btn("末页", tp, cur >= tp),
+      btn("‹ 上一页", cur - 1, cur <= 1, "cp-lg"),
+      btn("下一页 ›", cur + 1, cur >= tp, "cp-lg"),
     ),
     el("div", { class: "cp-jump" },
       "第", input, "页",
-      el("button", { class: "btn btn-sm btn-primary cp-btn", onclick: go }, "跳"),
+      el("button", { class: "btn btn-primary cp-btn cp-go", onclick: go }, "跳"),
     ),
   );
 }
