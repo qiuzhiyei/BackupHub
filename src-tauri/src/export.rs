@@ -1,12 +1,13 @@
 use std::path::PathBuf;
 
+use chrono::TimeZone;
 use serde::Serialize;
 
-use crate::models::{BackupSnapshot, CallLog, Contact, Sms};
+use crate::models::BackupSnapshot;
 use crate::storage::Storage;
 
 /// 导出某快照的全部数据为 JSON，返回生成的文件目录
-/// （JSON 与内部快照格式一致，可由「导入备份」无损还原）
+/// 目录名形如 BackupHub_<品牌>_<型号>_<备份时间>，便于人工识别
 pub fn export_snapshot(
     storage: &Storage,
     serial: &str,
@@ -20,7 +21,7 @@ pub fn export_snapshot(
     let meta = storage
         .get_snapshot(id)
         .ok_or_else(|| "快照不存在".to_string())?;
-    let stem = format!("{}_{}", safe(&meta.device_model), &meta.id);
+    let stem = build_export_name(&meta);
     let out_dir = dir.join(format!("BackupHub_{}", stem));
     std::fs::create_dir_all(&out_dir).map_err(|e| e.to_string())?;
 
@@ -36,6 +37,38 @@ pub fn export_snapshot(
     Ok(out_dir)
 }
 
+fn build_export_name(meta: &BackupSnapshot) -> String {
+    let date = fmt_folder_date(meta.created_at);
+    let brand = safe(&meta.device_brand);
+    let model = safe(&meta.device_model);
+    let brand_lower = brand.to_lowercase();
+    let mut parts: Vec<String> = Vec::new();
+    if !brand.is_empty() {
+        parts.push(brand);
+    }
+    if !model.is_empty() && model.to_lowercase() != brand_lower {
+        parts.push(model);
+    }
+    if !date.is_empty() {
+        parts.push(date);
+    }
+    if parts.is_empty() {
+        parts.push(meta.id.clone());
+    }
+    parts.join("_")
+}
+
+fn fmt_folder_date(ms: i64) -> String {
+    if ms <= 0 {
+        return String::new();
+    }
+    chrono::Local
+        .timestamp_opt(ms / 1000, 0)
+        .single()
+        .map(|t| t.format("%Y-%m-%d_%H-%M").to_string())
+        .unwrap_or_default()
+}
+
 fn write_json_file<T: Serialize>(path: &PathBuf, val: &T) -> Result<(), String> {
     let s = serde_json::to_string_pretty(val).map_err(|e| e.to_string())?;
     std::fs::write(path, s).map_err(|e| e.to_string())?;
@@ -45,6 +78,3 @@ fn write_json_file<T: Serialize>(path: &PathBuf, val: &T) -> Result<(), String> 
 fn safe(s: &str) -> String {
     s.replace(['/', '\\', ':', '*', '?', '"', '<', '>', '|', ' '], "_")
 }
-
-#[allow(dead_code)]
-fn _type_hints(_: &BackupSnapshot, _: &Sms, _: &CallLog, _: &Contact) {}
