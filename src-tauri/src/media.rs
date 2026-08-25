@@ -8,14 +8,19 @@ use crate::models::{PhotoFile, PhotoFolder, ProgressPayload};
 
 /// 扫描设备相册（content://media/external/images/media），按原目录分组
 pub fn scan_photos(adb: &PathBuf, serial: &str) -> Result<Vec<PhotoFolder>, String> {
-    let rows = adb::query_provider(
+    // 个别 ROM 对 display_name/_size 等列校验严格，整条查询会因无效列失败；
+    // 先用常用投影，失败则降级为仅 _data（文件名从路径 basename 推导）
+    let rows = match adb::query_provider(
         adb,
         serial,
         "content://media/external/images/media",
-        &["_data", "_size", "date_added", "display_name"],
+        &["_data", "_size", "date_added"],
         None,
         None,
-    )?;
+    ) {
+        Ok(r) => r,
+        Err(_) => adb::query_provider(adb, serial, "content://media/external/images/media", &["_data"], None, None)?,
+    };
 
     let mut groups: HashMap<String, Vec<PhotoFile>> = HashMap::new();
     for row in &rows {
@@ -27,11 +32,7 @@ pub fn scan_photos(adb: &PathBuf, serial: &str) -> Result<Vec<PhotoFolder>, Stri
             continue;
         }
         let dir = dirname(&data);
-        let name = row
-            .get("display_name")
-            .cloned()
-            .filter(|s| !s.is_empty())
-            .unwrap_or_else(|| basename(&data));
+        let name = basename(&data);
         let size = row.get("_size").and_then(|v| v.parse::<i64>().ok()).unwrap_or(0);
         // date_added 是秒，转毫秒
         let date = row
