@@ -302,7 +302,21 @@ export async function snapshotView(p: { params: Record<string, string> }): Promi
     const title = thread?.name || thread?.address || "会话";
     smsMsgHeadEl.replaceChildren(
       el("div", { class: "tv-title" }, esc(title)),
-      el("div", { class: "tv-count" }, thread ? `${thread.count} 条` : ""),
+      el("div", { class: "tv-tools" },
+        el("span", { class: "tv-count" }, thread ? `${thread.count} 条` : ""),
+        el("button", {
+          class: "btn btn-ghost btn-sm tv-jump",
+          title: "跳到最早",
+          disabled: msgPage <= 1,
+          onclick: () => void jumpToEarliest(tid),
+        }, "⏮ 最早"),
+        el("button", {
+          class: "btn btn-ghost btn-sm tv-jump",
+          title: "跳到最新",
+          disabled: msgPage >= msgTotalPages,
+          onclick: () => void jumpToLatest(tid),
+        }, "最新 ⏭"),
+      ),
     );
     if (!res.items.length) {
       smsMsgListEl.replaceChildren(emptyState("该会话没有消息"));
@@ -347,6 +361,32 @@ export async function snapshotView(p: { params: Record<string, string> }): Promi
       toast("加载失败: " + String(e), "error");
     } finally {
       msgLoading = false;
+    }
+  }
+
+  async function jumpToEarliest(tid: number) {
+    if (msgPage <= 1) return;
+    smsMsgListEl.replaceChildren(el("div", { class: "loading-row" }, "加载中…"));
+    try {
+      msgPage = 1;
+      const res = await api.getSmsThread(s.id, tid, 1, MSG_PAGE);
+      renderMessages(tid, res);
+      smsMsgListEl.scrollTop = 0;
+    } catch (e) {
+      toast("加载失败: " + String(e), "error");
+    }
+  }
+
+  async function jumpToLatest(tid: number) {
+    if (msgPage >= msgTotalPages) return;
+    smsMsgListEl.replaceChildren(el("div", { class: "loading-row" }, "加载中…"));
+    try {
+      msgPage = msgTotalPages;
+      const res = await api.getSmsThread(s.id, tid, msgPage, MSG_PAGE);
+      renderMessages(tid, res);
+      smsMsgListEl.scrollTop = smsMsgListEl.scrollHeight;
+    } catch (e) {
+      toast("加载失败: " + String(e), "error");
     }
   }
 

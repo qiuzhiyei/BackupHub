@@ -885,6 +885,16 @@ body {
   color: var(--text-muted);
   flex-shrink: 0;
 }
+.tv-tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.tv-jump {
+  padding: 4px 8px;
+  font-size: 12px;
+}
 .msg-list {
   flex: 1;
   overflow-y: auto;
