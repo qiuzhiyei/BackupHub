@@ -163,6 +163,49 @@ export function statChip(label: string, value: string | number, ico = ""): HTMLE
 
 export { fmtDateShort };
 
+/** 紧凑分页器：首页/上一页/下一页/末页 + 跳转到第几页（无数字条） */
+export function createCompactPager(
+  page: number,
+  totalPages: number,
+  total: number,
+  onGo: (p: number) => void,
+): HTMLElement {
+  const tp = Math.max(1, totalPages);
+  const cur = Math.min(Math.max(1, page), tp);
+  const btn = (label: string, p: number, disabled: boolean, cls = "") =>
+    el("button", {
+      class: `btn btn-sm btn-ghost cp-btn ${cls} ${disabled ? "disabled" : ""}`,
+      onclick: () => !disabled && onGo(p),
+    }, label);
+  const input = el("input", {
+    class: "input cp-input",
+    type: "number",
+    min: "1",
+    max: String(tp),
+    value: String(cur),
+    title: "跳转到第几页",
+  }) as HTMLInputElement;
+  const go = () => {
+    const n = parseInt(input.value, 10);
+    if (!Number.isNaN(n) && n >= 1 && n <= tp) onGo(n);
+    else input.value = String(cur);
+  };
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter") go(); });
+  return el("div", { class: "compact-pager" },
+    el("span", { class: "cp-info" }, `共 ${total} · ${cur}/${tp} 页`),
+    el("div", { class: "cp-group" },
+      btn("首页", 1, cur <= 1),
+      btn("‹", cur - 1, cur <= 1),
+      btn("›", cur + 1, cur >= tp),
+      btn("末页", tp, cur >= tp),
+    ),
+    el("div", { class: "cp-jump" },
+      "第", input, "页",
+      el("button", { class: "btn btn-sm btn-primary cp-btn", onclick: go }, "跳"),
+    ),
+  );
+}
+
 /** 快照行：查看/导出/编辑/删除，供「查看数据」与「设备历史」复用 */
 export function createSnapshotRow(
   s: BackupSnapshot,

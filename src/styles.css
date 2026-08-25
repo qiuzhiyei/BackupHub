@@ -777,8 +777,37 @@ body {
 }
 .thread-list-pager {
   border-top: 1px solid var(--border);
-  padding: 6px;
+  padding: 8px;
   background: var(--surface-2);
+}
+.compact-pager {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+  font-size: 12px;
+}
+.cp-info {
+  color: var(--text-soft);
+}
+.cp-group {
+  display: flex;
+  gap: 4px;
+}
+.cp-jump {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.cp-input {
+  width: 50px;
+  padding: 4px 6px;
+  font-size: 12px;
+  text-align: center;
+}
+.cp-btn {
+  padding: 4px 9px;
+  font-size: 12px;
 }
 .thread-list-loader,
 .thread-list-end {
