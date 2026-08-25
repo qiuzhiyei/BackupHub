@@ -143,9 +143,9 @@ export async function scanPhotos(serial: string): Promise<PhotoFolder[]> {
 export async function pullPhotos(
   serial: string,
   folders: string[],
-  dest: string,
+  parent: string,
 ): Promise<PullSummary> {
-  return invoke<PullSummary>("pull_photos", { serial, folders, dest });
+  return invoke<PullSummary>("pull_photos", { serial, folders, parent });
 }
 
 export function onMediaProgress(cb: (p: ProgressPayload) => void): Promise<UnlistenFn> {

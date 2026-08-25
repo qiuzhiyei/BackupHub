@@ -57,18 +57,32 @@ pub fn scan_photos(adb: &PathBuf, serial: &str) -> Result<Vec<PhotoFolder>, Stri
     Ok(folders)
 }
 
-/// 拉取选中的目录到本地 dest（每个目录 adb pull 一次），过程经 media://progress 推送
+/// 拉取选中的目录到本地：在 parent 下自动创建 BackupHub_<设备>_<时间> 目录，
+/// 各选中目录 adb pull 到其中，过程经 media://progress 推送
 pub fn pull_photo_folders(
     app: &AppHandle,
     adb: &PathBuf,
     serial: &str,
     folders: &[String],
-    dest: &str,
-) -> Result<usize, String> {
+    parent: &str,
+) -> Result<(usize, String), String> {
     if folders.is_empty() {
         return Err("未选择任何目录".into());
     }
-    std::fs::create_dir_all(dest).map_err(|e| format!("无法创建目标目录: {}", e))?;
+    // 设备名 + 本地时间，命名与导出一致
+    let get = |prop: &str| {
+        adb::run_adb(adb, &["-s", serial, "shell", "getprop", prop])
+            .map(|s| s.trim().to_string())
+            .unwrap_or_default()
+    };
+    let brand = get("ro.product.brand");
+    let model = get("ro.product.model");
+    let label = device_label(&brand, &model, serial);
+    let now = chrono::Local::now().format("%Y-%m-%d_%H-%M").to_string();
+    let dest = PathBuf::from(parent).join(format!("BackupHub_{}_{}", label, now));
+    std::fs::create_dir_all(&dest).map_err(|e| format!("无法创建目标目录: {}", e))?;
+    let dest_str = dest.to_string_lossy().to_string();
+
     let total = folders.len();
     let mut ok = 0usize;
     for (i, folder) in folders.iter().enumerate() {
@@ -81,7 +95,7 @@ pub fn pull_photo_folders(
                 message: format!("正在拉取 {} ({}/{})", basename(folder), i + 1, total),
             },
         );
-        let args: Vec<&str> = vec!["-s", serial, "pull", folder.as_str(), dest];
+        let args: Vec<&str> = vec!["-s", serial, "pull", folder.as_str(), &dest_str];
         match adb::run_adb(adb, &args) {
             Ok(_) => ok += 1,
             Err(e) => {
@@ -103,10 +117,31 @@ pub fn pull_photo_folders(
             stage: "done".into(),
             current: ok,
             total,
-            message: format!("完成：成功拉取 {}/{} 个目录到 {}", ok, total, dest),
+            message: format!("完成：成功拉取 {}/{} 个目录到 {}", ok, total, dest_str),
         },
     );
-    Ok(ok)
+    Ok((ok, dest_str))
+}
+
+fn device_label(brand: &str, model: &str, serial: &str) -> String {
+    let b = safe(brand);
+    let m = safe(model);
+    let b_lower = b.to_lowercase();
+    let mut parts: Vec<String> = Vec::new();
+    if !b.is_empty() {
+        parts.push(b);
+    }
+    if !m.is_empty() && m.to_lowercase() != b_lower {
+        parts.push(m);
+    }
+    if parts.is_empty() {
+        parts.push(safe(serial));
+    }
+    parts.join("_")
+}
+
+fn safe(s: &str) -> String {
+    s.replace(['/', '\\', ':', '*', '?', '"', '<', '>', '|', ' '], "_")
 }
 
 fn basename(p: &str) -> String {

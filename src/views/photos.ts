@@ -108,7 +108,7 @@ export async function photosView(): Promise<HTMLElement> {
     const pullBtn = el("button", {
       class: "btn btn-primary",
       disabled: selCount === 0,
-    }, `备份选中到…`);
+    }, "选中备份到…");
     pullBtn.onclick = async () => {
       const serial = deviceSelect.value;
       if (!serial) { toast("请先选择设备", "error"); return; }
@@ -179,7 +179,7 @@ export async function photosView(): Promise<HTMLElement> {
         scanBtn,
         el("button", { class: "btn btn-ghost btn-sm", onclick: () => void refreshDevices() }, "刷新"),
       ),
-      el("div", { class: "hint-line" }, "扫描后按设备原目录分类列出，勾选要拉取的目录，点「备份选中」选择本地目录保存。"),
+      el("div", { class: "hint-line" }, "扫描后按设备原目录分类列出，默认全选（=全部备份），可取消个别目录。点「选中备份到…」选一个父目录，会自动在其下创建 BackupHub_设备_时间 子目录保存。"),
     ),
     folderWrap,
     footer,
