@@ -1334,6 +1334,144 @@ body {
   min-width: 160px;
 }
 
+/* ---------- 相册 ---------- */
+.row-inline {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.row-inline .form-label {
+  flex-shrink: 0;
+}
+.row-inline .input {
+  width: auto;
+  min-width: 200px;
+  flex: 1;
+}
+.hint-line {
+  font-size: 13px;
+  color: var(--text-soft);
+  padding: 2px 2px 0;
+}
+.photo-folders {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.photo-folder {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  flex-wrap: wrap;
+}
+.photo-folder-head {
+  background: var(--surface-2);
+  font-weight: 600;
+}
+.pf-check {
+  flex-shrink: 0;
+  display: inline-flex;
+}
+.pf-check input {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+.pf-toggle {
+  cursor: pointer;
+  color: var(--text-soft);
+  font-size: 13px;
+  width: 16px;
+  text-align: center;
+  user-select: none;
+}
+.pf-toggle.closed {
+  transform: rotate(-90deg);
+}
+.pf-name {
+  font-weight: 600;
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 220px;
+}
+.pf-path {
+  font-size: 12px;
+  color: var(--text-soft);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 120px;
+}
+.pf-meta {
+  font-size: 12.5px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  margin-left: auto;
+}
+.pf-files {
+  flex-basis: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 6px;
+  padding: 6px 0 2px 30px;
+  border-top: 1px dashed var(--border);
+  max-height: 280px;
+  overflow-y: auto;
+}
+.pf-file {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12.5px;
+  color: var(--text-muted);
+  padding: 3px 0;
+}
+.pf-file-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pf-file-meta {
+  white-space: nowrap;
+  color: var(--text-soft);
+}
+.pf-file-more {
+  font-size: 12px;
+  color: var(--text-soft);
+  padding: 4px 0;
+}
+.photo-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  position: sticky;
+  bottom: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 16px;
+  box-shadow: var(--shadow);
+  flex-wrap: wrap;
+}
+.pf-summary {
+  font-size: 13.5px;
+  color: var(--text-muted);
+}
+.photo-progress .progress-fill {
+  background: linear-gradient(90deg, #f59e0b 0%, #fbbf24 100%);
+}
+
 /* ---------- 诊断 ---------- */
 .diag-actions {
   display: flex;

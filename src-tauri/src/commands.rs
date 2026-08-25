@@ -8,7 +8,7 @@ use crate::backup;
 use crate::export;
 use crate::models::{
     BackupOptions, BackupSnapshot, Contact, DeviceRecord, DeviceStatus, PageQuery, PageResult,
-    Sms, SmsThread,
+    PullSummary, Sms, SmsThread,
 };
 use crate::storage::{AppConfig, Storage};
 
@@ -85,6 +85,32 @@ pub fn diagnose_provider(
 ) -> Result<String, String> {
     let adb = resolve_adb(&state)?;
     adb::query_raw(&adb, &serial, &uri)
+}
+
+/// 扫描设备相册，按原目录分组返回
+#[tauri::command]
+pub fn scan_photos(serial: String, state: State<AppState>) -> Result<Vec<crate::models::PhotoFolder>, String> {
+    let adb = resolve_adb(&state)?;
+    crate::media::scan_photos(&adb, &serial)
+}
+
+/// 拉取选中的相册目录到本地目录
+#[tauri::command]
+pub async fn pull_photos(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    serial: String,
+    folders: Vec<String>,
+    dest: String,
+) -> Result<PullSummary, String> {
+    let adb = resolve_adb(&state)?;
+    let dest_out = dest.clone();
+    let n = tauri::async_runtime::spawn_blocking(move || {
+        crate::media::pull_photo_folders(&app, &adb, &serial, &folders, &dest)
+    })
+    .await
+    .map_err(|e| format!("任务异常: {}", e))??;
+    Ok(PullSummary { folders: n, dest: dest_out })
 }
 
 #[tauri::command]

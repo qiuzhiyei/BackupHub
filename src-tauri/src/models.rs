@@ -141,3 +141,30 @@ pub struct PageResult<T> {
     pub page: usize,
     pub page_size: usize,
 }
+
+// ---------- 相册（照片） ----------
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PhotoFile {
+    pub path: String,
+    pub name: String,
+    pub size: i64,
+    /// 毫秒时间戳
+    pub date: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PhotoFolder {
+    /// 设备上的目录绝对路径
+    pub dir: String,
+    /// 目录最后一段名
+    pub name: String,
+    pub count: usize,
+    pub total_size: i64,
+    pub files: Vec<PhotoFile>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PullSummary {
+    pub folders: usize,
+    pub dest: String,
+}

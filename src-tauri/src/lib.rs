@@ -2,6 +2,7 @@ mod adb;
 mod backup;
 mod commands;
 mod export;
+mod media;
 mod models;
 mod storage;
 
@@ -29,6 +30,8 @@ pub fn run() {
             commands::set_adb_path,
             commands::list_devices,
             commands::diagnose_provider,
+            commands::scan_photos,
+            commands::pull_photos,
             commands::list_device_records,
             commands::list_snapshots,
             commands::get_snapshot,

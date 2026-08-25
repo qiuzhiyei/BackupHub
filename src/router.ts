@@ -4,6 +4,7 @@ import { historyView } from "./views/history";
 import { snapshotView } from "./views/snapshot";
 import { backupView } from "./views/backup";
 import { dataView } from "./views/data";
+import { photosView } from "./views/photos";
 import { settingsView } from "./views/settings";
 import { clear } from "./dom";
 
@@ -23,6 +24,7 @@ interface RouteEntry {
 const routes: RouteEntry[] = [
   { pattern: /^#\/$/, keys: [], view: () => dashboardView() },
   { pattern: /^#\/backup$/, keys: [], view: (p) => backupView(p) },
+  { pattern: /^#\/photos$/, keys: [], view: () => photosView() },
   { pattern: /^#\/data$/, keys: [], view: () => dataView() },
   { pattern: /^#\/devices$/, keys: [], view: () => devicesGridView() },
   { pattern: /^#\/devices\/([^/]+)$/, keys: ["serial"], view: (p) => historyView(p) },

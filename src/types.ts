@@ -111,3 +111,24 @@ export interface PageResult<T> {
   page: number;
   page_size: number;
 }
+
+// 相册（照片）
+export interface PhotoFile {
+  path: string;
+  name: string;
+  size: number;
+  date: number;
+}
+
+export interface PhotoFolder {
+  dir: string;
+  name: string;
+  count: number;
+  total_size: number;
+  files: PhotoFile[];
+}
+
+export interface PullSummary {
+  folders: number;
+  dest: string;
+}

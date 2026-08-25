@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
+import { openPath } from "@tauri-apps/plugin-opener";
 
 import type {
   AdbStatus,
@@ -12,7 +13,9 @@ import type {
   DeviceStatus,
   PageQuery,
   PageResult,
+  PhotoFolder,
   ProgressPayload,
+  PullSummary,
   Sms,
   SmsThread,
 } from "./types";
@@ -131,4 +134,24 @@ export function onBackupProgress(
   cb: (p: ProgressPayload) => void,
 ): Promise<UnlistenFn> {
   return listen<ProgressPayload>("backup://progress", (e) => cb(e.payload));
+}
+
+export async function scanPhotos(serial: string): Promise<PhotoFolder[]> {
+  return invoke<PhotoFolder[]>("scan_photos", { serial });
+}
+
+export async function pullPhotos(
+  serial: string,
+  folders: string[],
+  dest: string,
+): Promise<PullSummary> {
+  return invoke<PullSummary>("pull_photos", { serial, folders, dest });
+}
+
+export function onMediaProgress(cb: (p: ProgressPayload) => void): Promise<UnlistenFn> {
+  return listen<ProgressPayload>("media://progress", (e) => cb(e.payload));
+}
+
+export async function openFolder(path: string): Promise<void> {
+  await openPath(path);
 }
