@@ -123,6 +123,10 @@ export async function exportSnapshot(
   return invoke<string>("export_snapshot", { serial, id, format, dir });
 }
 
+export async function importSnapshot(dir: string): Promise<BackupSnapshot> {
+  return invoke<BackupSnapshot>("import_snapshot", { dir });
+}
+
 export function onBackupProgress(
   cb: (p: ProgressPayload) => void,
 ): Promise<UnlistenFn> {

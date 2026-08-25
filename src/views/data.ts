@@ -3,6 +3,7 @@ import { navigate } from "../router";
 import * as api from "../api";
 import type { BackupSnapshot, DeviceRecord } from "../types";
 import { emptyState, pageHeader, createSnapshotRow } from "./components";
+import { toast } from "../dom";
 
 export async function dataView(): Promise<HTMLElement> {
   const list = el("div", { class: "snapshot-list" }, emptyState("加载中…"));
@@ -76,9 +77,25 @@ export async function dataView(): Promise<HTMLElement> {
   });
   searchInput.addEventListener("input", () => render());
 
+  const importBtn = el("button", { class: "btn btn-primary" }, "⬆ 导入备份");
+  importBtn.onclick = async () => {
+    const dir = await api.pickExportDir();
+    if (!dir) return;
+    try {
+      const snap = await api.importSnapshot(dir);
+      toast(
+        `已导入：${snap.custom_name || snap.device_model}（短信 ${snap.sms_count} · 通话 ${snap.call_count} · 联系人 ${snap.contact_count}）`,
+        "success",
+      );
+      void load();
+    } catch (e) {
+      toast("导入失败: " + String(e), "error");
+    }
+  };
+
   void load();
   return el("div", { class: "page" },
-    pageHeader("查看数据"),
+    pageHeader("查看数据", importBtn),
     el("div", { class: "filter-bar" },
       el("div", { class: "filter-search-wrap" }, searchInput),
       el("span", { class: "filter-sep" }, "设备"),

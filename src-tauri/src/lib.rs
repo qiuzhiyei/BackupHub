@@ -34,6 +34,7 @@ pub fn run() {
             commands::get_snapshot,
             commands::backup_start,
             commands::delete_snapshot,
+            commands::import_snapshot,
             commands::update_device_name,
             commands::update_snapshot_note,
             commands::update_snapshot_custom_name,

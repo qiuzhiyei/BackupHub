@@ -157,6 +157,36 @@ impl Storage {
         Ok(meta)
     }
 
+    /// 从 JSON 导出目录导入为一个新快照
+    /// 自动定位含 meta.json 的目录（可选中导出文件夹本身或其父级）
+    pub fn import_json(&self, dir: &Path) -> Result<BackupSnapshot, String> {
+        let target = if dir.join("meta.json").exists() {
+            dir.to_path_buf()
+        } else {
+            let mut found = None;
+            let entries = fs::read_dir(dir).map_err(|e| format!("无法读取目录: {}", e))?;
+            for entry in entries {
+                let entry = entry.map_err(|e| e.to_string())?;
+                let p = entry.path();
+                if p.is_dir() && p.join("meta.json").exists() {
+                    found = Some(p);
+                    break;
+                }
+            }
+            found.ok_or_else(|| "未找到 meta.json，请选择 JSON 导出产生的文件夹".to_string())?
+        };
+
+        let mut meta: BackupSnapshot = read_json(&target.join("meta.json"))
+            .ok_or_else(|| "meta.json 解析失败".to_string())?;
+        let sms: Vec<Sms> = read_json(&target.join("sms.json")).unwrap_or_default();
+        let calls: Vec<CallLog> = read_json(&target.join("calls.json")).unwrap_or_default();
+        let contacts: Vec<Contact> = read_json(&target.join("contacts.json")).unwrap_or_default();
+
+        // 生成新 id 避免与本地已有快照冲突；保留原始备份时间 created_at
+        meta.id = chrono::Utc::now().timestamp_millis().to_string();
+        self.save_snapshot(meta, &sms, &calls, &contacts)
+    }
+
     pub fn delete_snapshot(&self, id: &str) -> Result<(), String> {
         let mut list = self.load_snapshots();
         let pos = list.iter().position(|s| s.id == id);

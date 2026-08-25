@@ -140,6 +140,12 @@ pub fn delete_snapshot(id: String, state: State<AppState>) -> Result<(), String>
 }
 
 #[tauri::command]
+pub fn import_snapshot(dir: String, state: State<AppState>) -> Result<BackupSnapshot, String> {
+    let dir = PathBuf::from(dir);
+    state.storage.import_json(&dir)
+}
+
+#[tauri::command]
 pub fn update_device_name(
     serial: String,
     name: String,
