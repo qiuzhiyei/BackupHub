@@ -41,6 +41,8 @@ export async function snapshotView(p: { params: Record<string, string> }): Promi
   let lastThreads: SmsThread[] = [];
   let msgPage = 1;
   let msgTotalPages = 1;
+  let msgLoading = false;
+  let suppressScroll = false;
   let smsThreadListEl: HTMLElement;
   let smsThreadPagerEl: HTMLElement;
   let smsMsgHeadEl: HTMLElement;
@@ -178,6 +180,7 @@ export async function snapshotView(p: { params: Record<string, string> }): Promi
     smsThreadPagerEl = el("div", { class: "thread-list-pager" });
     smsMsgHeadEl = el("div", { class: "thread-view-head" }, "选择会话");
     smsMsgListEl = el("div", { class: "msg-list" }, emptyState("选择左侧会话查看短信"));
+    smsMsgListEl.addEventListener("scroll", onMsgScroll);
     return el("div", { class: "sms-chat" },
       el("div", { class: "thread-list-pane" },
         smsThreadListEl,
@@ -282,54 +285,44 @@ export async function snapshotView(p: { params: Record<string, string> }): Promi
       return;
     }
     const nodes: (Node | string)[] = [];
-    if (msgPage > 1) {
-      nodes.push(el("button", {
-        class: "btn btn-ghost btn-block msg-load",
-        onclick: () => void loadOlder(tid),
-      }, "↑ 加载更早"));
-    }
+    if (msgPage <= 1) nodes.push(el("div", { class: "msg-top-hint" }, "— 已到最早 —"));
     for (const m of res.items) nodes.push(smsBubble(m));
     smsMsgListEl.replaceChildren(...nodes);
     smsMsgListEl.scrollTop = smsMsgListEl.scrollHeight;
   }
 
-  async function loadOlder(tid: number) {
-    if (msgPage <= 1) return;
-    // 先把按钮置为加载中，避免期间界面跳动
-    const loadBtn = smsMsgListEl.firstElementChild as HTMLButtonElement | null;
-    if (loadBtn && loadBtn.classList.contains("msg-load")) {
-      loadBtn.textContent = "加载中…";
-      loadBtn.disabled = true;
+  function onMsgScroll() {
+    if (suppressScroll) {
+      suppressScroll = false;
+      return;
     }
+    if (msgLoading || selectedThreadId === null || msgPage <= 1) return;
+    if (smsMsgListEl.scrollTop < 40) {
+      void autoLoadOlder(selectedThreadId);
+    }
+  }
+
+  async function autoLoadOlder(tid: number) {
+    if (msgLoading || msgPage <= 1) return;
+    msgLoading = true;
     const nextPage = msgPage - 1;
     try {
       const res = await api.getSmsThread(s.id, tid, nextPage, MSG_PAGE);
       msgPage = nextPage;
-      // 关键：记录锚点 -> 同步插入 -> 同步校正滚动，全部在同一帧内完成，避免闪跳
+      // 同步：记录锚点 -> 插入旧消息 -> 校正滚动，同帧完成，视觉不闪跳
       const prevH = smsMsgListEl.scrollHeight;
       const prevTop = smsMsgListEl.scrollTop;
-      const oldBtn = smsMsgListEl.firstElementChild as HTMLElement | null;
-      if (oldBtn && oldBtn.classList.contains("msg-load")) oldBtn.remove();
       const frag = document.createDocumentFragment();
-      if (msgPage > 1) {
-        frag.appendChild(el("button", {
-          class: "btn btn-ghost btn-block msg-load",
-          onclick: () => void loadOlder(tid),
-        }, "↑ 加载更早"));
-      }
+      if (msgPage <= 1) frag.appendChild(el("div", { class: "msg-top-hint" }, "— 已到最早 —"));
       for (const m of res.items) frag.appendChild(smsBubble(m));
       smsMsgListEl.insertBefore(frag, smsMsgListEl.firstChild);
-      // 原可见内容被向下推了 added 像素，scrollTop 同步增加，视觉位置保持不动
       const added = smsMsgListEl.scrollHeight - prevH;
+      suppressScroll = true;
       smsMsgListEl.scrollTop = prevTop + added;
     } catch (e) {
       toast("加载失败: " + String(e), "error");
-      // 恢复按钮
-      const btn = smsMsgListEl.firstElementChild as HTMLButtonElement | null;
-      if (btn && btn.classList.contains("msg-load")) {
-        btn.textContent = "↑ 加载更早";
-        btn.disabled = false;
-      }
+    } finally {
+      msgLoading = false;
     }
   }
 
