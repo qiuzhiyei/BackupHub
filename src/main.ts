@@ -27,12 +27,10 @@ function buildShell(): void {
       el("header", { class: "topbar" },
         el("div", { class: "topbar-title" }, "BackupHub"),
         el("div", { class: "topbar-task", style: { display: "none" } },
-          el("span", { class: "tt-ico" }, "🖼️"),
-          el("div", { class: "tt-body" },
-            el("div", { class: "tt-text" }, ""),
-            el("div", { class: "tt-bar" }, el("div", { class: "tt-fill" })),
-          ),
-          el("button", { class: "btn btn-sm btn-ghost tt-open", style: { display: "none" } }, "打开文件夹"),
+          el("span", { class: "tt-ico" }, "⏳"),
+          el("span", { class: "tt-text" }, ""),
+          el("div", { class: "tt-bar" }, el("div", { class: "tt-fill" })),
+          el("button", { class: "btn btn-sm btn-ghost tt-open", style: { display: "none" } }, "打开"),
         ),
         el("div", { class: "topbar-status" }, "ADB: 检测中…"),
       ),
@@ -43,8 +41,8 @@ function buildShell(): void {
   document.body.appendChild(el("div", { id: "toast-host" }));
 }
 
-// 全局照片拉取进度徽标：切页不丢失
-function setupMediaProgress(): void {
+// 顶栏通用任务进度徽标：照片拉取 / 短信备份 等都走它，切页不丢
+function setupTaskProgress(): void {
   const task = document.querySelector(".topbar-task") as HTMLElement | null;
   if (!task) return;
   const text = task.querySelector(".tt-text") as HTMLElement;
@@ -53,36 +51,39 @@ function setupMediaProgress(): void {
   let hideT: number | undefined;
   let lastDest = "";
 
-  void api.onMediaProgress((p: ProgressPayload) => {
+  const onP = (p: ProgressPayload) => {
     task.style.display = "";
     openBtn.style.display = "none";
-    const pct = p.total > 0 ? Math.round((p.current / Math.max(p.total, 1)) * 100) : 0;
+    const pct = p.total > 0
+      ? Math.round((p.current / Math.max(p.total, 1)) * 100)
+      : p.stage === "done" ? 100 : 0;
     fill.style.width = `${pct}%`;
     if (p.stage === "done") {
-      fill.style.width = "100%";
       text.textContent = "✓ " + p.message;
-      const m = p.message.match(/到 (.+)$/);
+      const m = p.message.match(/到\s+(.+)$/);
       if (m) {
         lastDest = m[1];
         openBtn.style.display = "";
         openBtn.onclick = () => void api.openFolder(lastDest);
       }
       window.clearTimeout(hideT);
-      hideT = window.setTimeout(() => { task.style.display = "none"; }, 20000);
+      hideT = window.setTimeout(() => { task.style.display = "none"; }, 15000);
     } else if (p.stage === "error") {
       text.textContent = "⚠ " + p.message;
       window.clearTimeout(hideT);
       hideT = window.setTimeout(() => { task.style.display = "none"; }, 8000);
     } else {
-      text.textContent = `🖼️ 照片拉取 ${p.current + 1}/${p.total}`;
+      text.textContent = p.message;
     }
-  });
+  };
+  void api.onMediaProgress(onP);
+  void api.onBackupProgress(onP);
 }
 
 window.addEventListener("DOMContentLoaded", async () => {
   buildShell();
   startRouter();
-  setupMediaProgress();
+  setupTaskProgress();
   const status = document.querySelector(".topbar-status");
   if (status) {
     try {

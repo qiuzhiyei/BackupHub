@@ -11,6 +11,11 @@ function fmtSize(b: number): string {
   return `${(b / 1024 / 1024 / 1024).toFixed(2)} GB`;
 }
 
+// 模块级缓存：切走再回（同设备）保留扫描结果，不必重新扫描
+const selected = new Set<string>();
+let folders: PhotoFolder[] = [];
+let scannedSerial = "";
+
 export async function photosView(): Promise<HTMLElement> {
   const wrap = el("div", { class: "page" });
   const deviceSelect = el("select", { class: "input" }) as HTMLSelectElement;
@@ -18,9 +23,6 @@ export async function photosView(): Promise<HTMLElement> {
   const folderWrap = el("div", { class: "photo-folders" }, emptyState("先选择设备并扫描", "将按设备原目录分类列出照片"));
   const footer = el("div", { class: "photo-footer" });
   const progressPanel = el("div", { class: "panel photo-progress", style: { display: "none" } });
-
-  const selected = new Set<string>();
-  let folders: PhotoFolder[] = [];
 
   async function refreshDevices() {
     try {
@@ -30,6 +32,19 @@ export async function photosView(): Promise<HTMLElement> {
         : [el("option", { value: "" }, "无可用设备")]));
     } catch {
       deviceSelect.replaceChildren(el("option", { value: "" }, "ADB 不可用"));
+    }
+    // 恢复上次扫描结果（仅当该设备仍在线）
+    if (scannedSerial) {
+      const has = [...deviceSelect.options].some((o) => o.value === scannedSerial);
+      if (has) {
+        deviceSelect.value = scannedSerial;
+        if (folders.length) renderFolders();
+      } else {
+        // 之前扫描的设备已不在线，清空缓存
+        folders = [];
+        selected.clear();
+        scannedSerial = "";
+      }
     }
   }
 
@@ -159,6 +174,7 @@ export async function photosView(): Promise<HTMLElement> {
     folderWrap.replaceChildren(el("div", { class: "loading-row" }, "扫描设备相册…"));
     try {
       folders = await api.scanPhotos(serial);
+      scannedSerial = serial;
       selected.clear();
       folders.forEach((f) => selected.add(f.dir)); // 默认全选
       renderFolders();
@@ -169,6 +185,18 @@ export async function photosView(): Promise<HTMLElement> {
       scanBtn.textContent = "扫描相册";
     }
   };
+
+  // 切换设备则清空旧扫描（属于不同设备）
+  deviceSelect.addEventListener("change", () => {
+    const v = deviceSelect.value;
+    if (v && v !== scannedSerial) {
+      folders = [];
+      selected.clear();
+      scannedSerial = "";
+      folderWrap.replaceChildren(emptyState("先选择设备并扫描", "将按设备原目录分类列出照片"));
+      footer.replaceChildren();
+    }
+  });
 
   wrap.replaceChildren(
     pageHeader("照片备份"),
