@@ -7,7 +7,6 @@ import { promptDialog } from "../modal";
 
 type Tab = "sms" | "calls" | "contacts";
 const PAGE_SIZE = 50;
-const THREAD_PAGE = 8;
 const MSG_PAGE = 50;
 
 export async function snapshotView(p: { params: Record<string, string> }): Promise<HTMLElement> {
@@ -40,6 +39,9 @@ export async function snapshotView(p: { params: Record<string, string> }): Promi
   let selectedThreadId: number | null = null;
   let lastThreads: SmsThread[] = [];
   let loadedMsgFor: number | null = null;
+  let threadPageSize = 8;
+  let lastUsedPageSize = 0;
+  let threadResizeObs: ResizeObserver | undefined;
   let msgPage = 1;
   let msgTotalPages = 1;
   let msgLoading = false;
@@ -173,6 +175,20 @@ export async function snapshotView(p: { params: Record<string, string> }): Promi
     smsMsgHeadEl = el("div", { class: "thread-view-head" }, "选择会话");
     smsMsgListEl = el("div", { class: "msg-list" }, emptyState("选择左侧会话查看短信"));
     smsMsgListEl.addEventListener("scroll", onMsgScroll);
+    // 自适应每页条数：随左栏高度变化重算并刷新
+    if (threadResizeObs) threadResizeObs.disconnect();
+    let rt: number | undefined;
+    threadResizeObs = new ResizeObserver(() => {
+      window.clearTimeout(rt);
+      rt = window.setTimeout(() => {
+        recomputePageSize();
+        if (threadPageSize !== lastUsedPageSize) {
+          threadPage = 1;
+          void loadThreadsPage();
+        }
+      }, 180);
+    });
+    threadResizeObs.observe(smsThreadListEl);
     return el("div", { class: "sms-chat" },
       el("div", { class: "thread-list-pane" },
         smsThreadListEl,
@@ -185,6 +201,15 @@ export async function snapshotView(p: { params: Record<string, string> }): Promi
     );
   }
 
+  function recomputePageSize() {
+    const h = smsThreadListEl.clientHeight;
+    if (h <= 0) return;
+    let itemH = 60;
+    const sample = smsThreadListEl.querySelector(".thread-item") as HTMLElement | null;
+    if (sample && sample.offsetHeight) itemH = sample.offsetHeight + 1;
+    threadPageSize = Math.max(4, Math.floor(h / itemH));
+  }
+
   function ensureShell() {
     const first = contentEl.firstElementChild as HTMLElement | null;
     if (!first || !first.classList.contains("sms-chat")) {
@@ -194,16 +219,18 @@ export async function snapshotView(p: { params: Record<string, string> }): Promi
 
   async function loadThreadsPage() {
     ensureShell();
+    recomputePageSize();
+    lastUsedPageSize = threadPageSize;
     smsThreadListEl.replaceChildren(el("div", { class: "loading-row" }, "加载中…"));
     smsThreadPagerEl.replaceChildren();
     try {
       const res = await api.listSmsThreads({
-        snapshot_id: s.id, page: threadPage, page_size: THREAD_PAGE,
+        snapshot_id: s.id, page: threadPage, page_size: threadPageSize,
         search: threadSearch, date_from: null, date_to: null,
       });
       lastThreads = res.items;
       renderThreadList(res);
-      const totalPages = Math.max(1, Math.ceil(res.total / THREAD_PAGE));
+      const totalPages = Math.max(1, Math.ceil(res.total / threadPageSize));
       smsThreadPagerEl.replaceChildren(
         createCompactPager(threadPage, totalPages, res.total, (p) => {
           threadPage = p;
