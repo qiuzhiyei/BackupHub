@@ -3,7 +3,7 @@ import { navigate } from "../router";
 import * as api from "../api";
 import type { BackupSnapshot, CallLog, Contact, PageResult, Sms, SmsThread } from "../types";
 import { createFilterBar, createPagination, emptyState, pageHeader, statChip } from "./components";
-import { promptDialog, chooseDialog } from "../modal";
+import { promptDialog } from "../modal";
 
 type Tab = "sms" | "calls" | "contacts";
 const PAGE_SIZE = 50;
@@ -58,17 +58,12 @@ export async function snapshotView(p: { params: Record<string, string> }): Promi
   const contentEl = el("div", { class: "tab-content" });
   const pageEl = el("div", { class: "tab-pagination" });
 
-  const exportBtn = el("button", { class: "btn btn-ghost" }, "导出");
+  const exportBtn = el("button", { class: "btn btn-ghost" }, "导出 JSON");
   exportBtn.onclick = async () => {
-    const fmt = await chooseDialog("选择导出格式", [
-      { label: "CSV", value: "csv" },
-      { label: "JSON", value: "json" },
-    ], "导出快照");
-    if (!fmt) return;
     const dir = await api.pickExportDir();
     if (!dir) return;
     try {
-      const out = await api.exportSnapshot(s.device_serial, s.id, fmt as "csv" | "json", dir);
+      const out = await api.exportSnapshot(s.device_serial, s.id, "json", dir);
       toast("已导出到: " + out, "success");
     } catch (e) {
       toast("导出失败: " + String(e), "error");

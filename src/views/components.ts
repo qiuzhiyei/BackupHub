@@ -1,6 +1,6 @@
 import { el, esc, fmtDate, fmtDateShort, dateToMsStart, dateToMsEnd, toast } from "../dom";
 import * as api from "../api";
-import { confirmDialog, promptDialog, chooseDialog } from "../modal";
+import { confirmDialog, promptDialog } from "../modal";
 import type { BackupSnapshot } from "../types";
 
 export interface Filters {
@@ -194,15 +194,10 @@ export function createSnapshotRow(
       el("button", {
         class: "btn btn-sm btn-ghost",
         onclick: async () => {
-          const fmt = await chooseDialog("选择导出格式", [
-            { label: "CSV", value: "csv" },
-            { label: "JSON", value: "json" },
-          ], "导出备份");
-          if (!fmt) return;
           const dir = await api.pickExportDir();
           if (!dir) return;
           try {
-            const out = await api.exportSnapshot(s.device_serial, s.id, fmt as "csv" | "json", dir);
+            const out = await api.exportSnapshot(s.device_serial, s.id, "json", dir);
             toast("已导出到: " + out, "success");
           } catch (e) {
             toast("导出失败: " + String(e), "error");
