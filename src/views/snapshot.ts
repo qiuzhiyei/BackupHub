@@ -39,12 +39,13 @@ export async function snapshotView(p: { params: Record<string, string> }): Promi
   let threadSearch = "";
   let selectedThreadId: number | null = null;
   let lastThreads: SmsThread[] = [];
+  let threadLoading = false;
+  let hasMoreThreads = false;
   let msgPage = 1;
   let msgTotalPages = 1;
   let msgLoading = false;
   let suppressScroll = false;
   let smsThreadListEl: HTMLElement;
-  let smsThreadPagerEl: HTMLElement;
   let smsMsgHeadEl: HTMLElement;
   let smsMsgListEl: HTMLElement;
 
@@ -152,7 +153,7 @@ export async function snapshotView(p: { params: Record<string, string> }): Promi
   async function fetchData() {
     if (tab === "sms") {
       pageEl.replaceChildren();
-      await fetchThreads();
+      await loadThreads(false);
       return;
     }
     const q = { snapshot_id: s.id, page, page_size: PAGE_SIZE, search: filters.search, date_from: filters.dateFrom, date_to: filters.dateTo };
@@ -172,15 +173,12 @@ export async function snapshotView(p: { params: Record<string, string> }): Promi
   // ---------- 短信：会话视图 ----------
   function buildSmsShell(): HTMLElement {
     smsThreadListEl = el("div", { class: "thread-list" }, emptyState("加载中…"));
-    smsThreadPagerEl = el("div", { class: "thread-list-pager" });
     smsMsgHeadEl = el("div", { class: "thread-view-head" }, "选择会话");
     smsMsgListEl = el("div", { class: "msg-list" }, emptyState("选择左侧会话查看短信"));
+    smsThreadListEl.addEventListener("scroll", onThreadScroll);
     smsMsgListEl.addEventListener("scroll", onMsgScroll);
     return el("div", { class: "sms-chat" },
-      el("div", { class: "thread-list-pane" },
-        smsThreadListEl,
-        smsThreadPagerEl,
-      ),
+      el("div", { class: "thread-list-pane" }, smsThreadListEl),
       el("div", { class: "thread-view-pane" },
         smsMsgHeadEl,
         smsMsgListEl,
@@ -188,34 +186,65 @@ export async function snapshotView(p: { params: Record<string, string> }): Promi
     );
   }
 
-  async function fetchThreads() {
-    contentEl.replaceChildren(el("div", { class: "loading-row" }, "加载会话…"));
+  function onThreadScroll() {
+    if (threadLoading || !hasMoreThreads) return;
+    const e = smsThreadListEl;
+    if (e.scrollHeight - e.scrollTop - e.clientHeight < 60) {
+      void loadThreads(true);
+    }
+  }
+
+  async function loadThreads(append: boolean) {
+    if (threadLoading) return;
+    threadLoading = true;
+    if (append) {
+      threadPage++;
+      smsThreadListEl.appendChild(el("div", { class: "thread-list-loader" }, "加载中…"));
+    } else {
+      threadPage = 1;
+      contentEl.replaceChildren(el("div", { class: "loading-row" }, "加载会话…"));
+    }
     try {
       const res = await api.listSmsThreads({
         snapshot_id: s.id, page: threadPage, page_size: THREAD_PAGE,
         search: threadSearch, date_from: null, date_to: null,
       });
-      lastThreads = res.items;
-      contentEl.replaceChildren(buildSmsShell());
-      renderThreadList(res);
-      smsThreadPagerEl.replaceChildren(
-        createPagination(threadPage, res.total, THREAD_PAGE, (pg) => {
-          threadPage = pg;
-          selectedThreadId = null;
-          void fetchData();
-        }),
-      );
-      if (selectedThreadId === null && res.items.length) {
-        selectedThreadId = res.items[0].thread_id;
-      }
-      if (selectedThreadId !== null) {
-        void loadThreadMessages(selectedThreadId);
+      hasMoreThreads = threadPage * THREAD_PAGE < res.total;
+      if (append) {
+        const loader = smsThreadListEl.querySelector(".thread-list-loader");
+        if (loader) loader.remove();
+        lastThreads = [...lastThreads, ...res.items];
+        smsThreadListEl.append(...res.items.map((t) => threadItem(t)));
+        if (!hasMoreThreads) {
+          smsThreadListEl.appendChild(el("div", { class: "thread-list-end" }, "— 没有更多会话 —"));
+        }
       } else {
-        smsMsgHeadEl.replaceChildren("选择会话");
-        smsMsgListEl.replaceChildren(emptyState(res.items.length ? "选择左侧会话查看短信" : "没有会话"));
+        lastThreads = res.items;
+        contentEl.replaceChildren(buildSmsShell());
+        renderThreadList(res);
+        if (selectedThreadId === null && res.items.length) {
+          selectedThreadId = res.items[0].thread_id;
+        }
+        if (selectedThreadId !== null) {
+          void loadThreadMessages(selectedThreadId);
+        } else {
+          smsMsgHeadEl.replaceChildren("选择会话");
+          smsMsgListEl.replaceChildren(emptyState(res.items.length ? "选择左侧会话查看短信" : "没有会话"));
+        }
+        if (!hasMoreThreads && res.items.length) {
+          smsThreadListEl.appendChild(el("div", { class: "thread-list-end" }, "— 没有更多会话 —"));
+        }
       }
     } catch (e) {
-      contentEl.replaceChildren(emptyState("加载失败", String(e)));
+      if (append) {
+        const loader = smsThreadListEl.querySelector(".thread-list-loader");
+        if (loader) loader.remove();
+        toast("加载失败: " + String(e), "error");
+      } else {
+        contentEl.replaceChildren(emptyState("加载失败", String(e)));
+      }
+    } finally {
+      threadLoading = false;
     }
   }
 
