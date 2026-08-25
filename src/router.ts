@@ -1,7 +1,9 @@
-import { devicesView } from "./views/devices";
+import { dashboardView } from "./views/dashboard";
+import { devicesGridView } from "./views/devices";
 import { historyView } from "./views/history";
 import { snapshotView } from "./views/snapshot";
 import { backupView } from "./views/backup";
+import { dataView } from "./views/data";
 import { settingsView } from "./views/settings";
 import { clear } from "./dom";
 
@@ -19,10 +21,12 @@ interface RouteEntry {
 }
 
 const routes: RouteEntry[] = [
-  { pattern: /^#\/$/, keys: [], view: () => devicesView() },
+  { pattern: /^#\/$/, keys: [], view: () => dashboardView() },
+  { pattern: /^#\/backup$/, keys: [], view: (p) => backupView(p) },
+  { pattern: /^#\/data$/, keys: [], view: () => dataView() },
+  { pattern: /^#\/devices$/, keys: [], view: () => devicesGridView() },
   { pattern: /^#\/devices\/([^/]+)$/, keys: ["serial"], view: (p) => historyView(p) },
   { pattern: /^#\/snapshot\/([^/]+)$/, keys: ["id"], view: (p) => snapshotView(p) },
-  { pattern: /^#\/backup$/, keys: [], view: (p) => backupView(p) },
   { pattern: /^#\/settings$/, keys: [], view: () => settingsView() },
 ];
 
@@ -41,10 +45,12 @@ export async function render(): Promise<void> {
   clear(view);
   view.appendChild(elSkeleton());
 
-  // 高亮导航
+  // 高亮导航（前缀匹配，#/devices/:serial 也高亮「设备」）
   document.querySelectorAll(".nav-link").forEach((a) => {
     const link = a as HTMLAnchorElement;
-    link.classList.toggle("active", link.getAttribute("href") === hash);
+    const href = link.getAttribute("href") || "";
+    const active = hash === href || (href !== "#/" && hash.startsWith(href));
+    link.classList.toggle("active", active);
   });
 
   const [pathPart, queryPart] = hash.split("?");

@@ -1,4 +1,7 @@
-import { el, fmtDateShort, dateToMsStart, dateToMsEnd } from "../dom";
+import { el, esc, fmtDate, fmtDateShort, dateToMsStart, dateToMsEnd, toast } from "../dom";
+import * as api from "../api";
+import { confirmDialog, promptDialog, chooseDialog } from "../modal";
+import type { BackupSnapshot } from "../types";
 
 export interface Filters {
   search: string;
@@ -159,3 +162,96 @@ export function statChip(label: string, value: string | number, ico = ""): HTMLE
 }
 
 export { fmtDateShort };
+
+/** 快照行：查看/导出/编辑/删除，供「查看数据」与「设备历史」复用 */
+export function createSnapshotRow(
+  s: BackupSnapshot,
+  opts: {
+    onReload: () => void;
+    onOpen: (id: string) => void;
+    showDevice?: boolean;
+    deviceName?: string;
+  },
+): HTMLElement {
+  const cols: HTMLElement[] = [
+    el("div", { class: "snap-time" },
+      el("div", { class: "snap-date" }, fmtDate(s.created_at)),
+      opts.showDevice
+        ? el("div", { class: "snap-name" }, opts.deviceName || s.custom_name || "—")
+        : el("div", { class: "snap-name" }, s.custom_name || "—"),
+    ),
+    el("div", { class: "snap-stats" },
+      el("span", { class: "mini-chip" }, `✉️ ${s.sms_count}`),
+      el("span", { class: "mini-chip" }, `📞 ${s.call_count}`),
+      el("span", { class: "mini-chip" }, `👥 ${s.contact_count}`),
+    ),
+    el("div", { class: "snap-note" }, s.note ? esc(s.note) : ""),
+    el("div", { class: "snap-actions" },
+      el("button", {
+        class: "btn btn-sm btn-primary",
+        onclick: () => opts.onOpen(s.id),
+      }, "查看"),
+      el("button", {
+        class: "btn btn-sm btn-ghost",
+        onclick: async () => {
+          const fmt = await chooseDialog("选择导出格式", [
+            { label: "CSV", value: "csv" },
+            { label: "JSON", value: "json" },
+          ], "导出备份");
+          if (!fmt) return;
+          const dir = await api.pickExportDir();
+          if (!dir) return;
+          try {
+            const out = await api.exportSnapshot(s.device_serial, s.id, fmt as "csv" | "json", dir);
+            toast("已导出到: " + out, "success");
+          } catch (e) {
+            toast("导出失败: " + String(e), "error");
+          }
+        },
+      }, "导出"),
+      el("button", {
+        class: "btn btn-sm btn-ghost",
+        onclick: async () => {
+          const note = await promptDialog("请输入备份备注", s.note, "编辑备注");
+          if (note !== null) {
+            await api.updateSnapshotNote(s.id, note.trim());
+            toast("已更新备注", "success");
+            opts.onReload();
+          }
+        },
+      }, "✎"),
+      el("button", {
+        class: "btn btn-sm btn-danger-ghost",
+        onclick: async () => {
+          if (await confirmDialog("确定删除此备份快照？此操作不可恢复。", "删除备份")) {
+            try {
+              await api.deleteSnapshot(s.id);
+              toast("已删除", "success");
+              opts.onReload();
+            } catch (e) {
+              toast("删除失败: " + String(e), "error");
+            }
+          }
+        },
+      }, "删除"),
+    ),
+  ];
+  return el("div", { class: "snapshot-row" }, ...cols);
+}
+
+/** 看板柱状条：单行 label + 比例条 + 数值 */
+export function barRow(
+  label: string,
+  value: number,
+  max: number,
+  colorClass = "bar-primary",
+): HTMLElement {
+  const pct = max > 0 ? Math.max(2, Math.round((value / max) * 100)) : 0;
+  return el("div", { class: "bar-row" },
+    el("div", { class: "bar-label" }, label),
+    el("div", { class: "bar-track" },
+      el("div", { class: `bar-fill ${colorClass}`, style: { width: `${pct}%` } }),
+    ),
+    el("div", { class: "bar-value" }, String(value)),
+  );
+}
