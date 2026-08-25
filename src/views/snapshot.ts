@@ -2,7 +2,7 @@ import { el, esc, fmtDate, fmtDuration, toast } from "../dom";
 import { navigate } from "../router";
 import * as api from "../api";
 import type { BackupSnapshot, CallLog, Contact, PageResult, Sms, SmsThread } from "../types";
-import { createFilterBar, createCompactPager, createPagination, emptyState, pageHeader, statChip } from "./components";
+import { createFilterBar, createCompactPager, createPagination, emptyState, pageHeader } from "./components";
 import { promptDialog } from "../modal";
 
 type Tab = "sms" | "calls" | "contacts";
@@ -73,21 +73,16 @@ export async function snapshotView(p: { params: Record<string, string> }): Promi
 
   wrap.replaceChildren(
     pageHeader(s.custom_name || s.device_model || "备份快照",
-      el("button", { class: "btn btn-ghost", onclick: () => navigate(`#/devices/${encodeURIComponent(s.device_serial)}`) }, "← 备份历史"),
+      el("button", { class: "btn btn-ghost btn-sm", onclick: () => navigate(`#/devices/${encodeURIComponent(s.device_serial)}`) }, "← 备份历史"),
       exportBtn,
     ),
-    el("div", { class: "device-summary" },
-      statChip("设备型号", s.device_model || "—", "📟"),
-      statChip("制造商", s.device_manufacturer || "—", "🏭"),
-      statChip("设备序列号", s.device_serial, "🔑"),
-      statChip("备份时间", fmtDate(s.created_at), "🕐"),
-      el("div", { class: "stat-chip stat-edit", title: "编辑名称" },
-        el("span", { class: "stat-ico" }, "🏷️"),
-        el("div", { class: "stat-body" },
-          el("div", { class: "stat-val" }, "编辑名称"),
-          el("div", { class: "stat-label" }, s.custom_name || "点击设置"),
-        ),
-      ),
+    el("div", { class: "snap-meta" },
+      el("span", { class: "sm-item" }, esc([s.device_brand, s.device_model].filter(Boolean).join(" ") || "—")),
+      el("span", { class: "sm-sep" }, "·"),
+      el("span", { class: "sm-item" }, `序列号 ${esc(s.device_serial)}`),
+      el("span", { class: "sm-sep" }, "·"),
+      el("span", { class: "sm-item" }, fmtDate(s.created_at)),
+      el("button", { class: "btn btn-ghost btn-sm sm-edit", title: "编辑名称" }, "✎ 编辑名称"),
     ),
     tabsEl,
     toolbarEl,
@@ -95,7 +90,7 @@ export async function snapshotView(p: { params: Record<string, string> }): Promi
     pageEl,
   );
 
-  wrap.querySelector(".stat-edit")?.addEventListener("click", async () => {
+  wrap.querySelector(".sm-edit")?.addEventListener("click", async () => {
     const name = await promptDialog("请输入设备名称", s.custom_name || s.device_model || "", "编辑设备名称");
     if (name !== null) {
       await api.updateSnapshotCustomName(s.id, name.trim());

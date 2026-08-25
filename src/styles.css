@@ -170,16 +170,38 @@ body {
 }
 
 #view {
-  padding: 28px;
+  padding: 20px 24px;
   flex: 1;
-  max-width: 1280px;
   width: 100%;
-  margin: 0 auto;
+  max-width: none;
 }
 .page {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 14px;
+}
+
+/* 快照页紧凑元信息 */
+.snap-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-muted);
+  padding: 2px 2px;
+}
+.sm-item {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sm-sep {
+  color: var(--text-soft);
+}
+.sm-edit {
+  margin-left: auto;
+  font-size: 12.5px;
 }
 
 /* ---------- 页头 ---------- */
@@ -745,8 +767,8 @@ body {
   display: grid;
   grid-template-columns: 320px 1fr;
   gap: 14px;
-  height: calc(100vh - 320px);
-  min-height: 420px;
+  height: calc(100vh - 230px);
+  min-height: 360px;
 }
 @media (max-width: 760px) {
   .sms-chat {
