@@ -1,7 +1,7 @@
 import { el, esc, fmtDate, toast } from "../dom";
 import * as api from "../api";
 import type { PhotoFolder, ProgressPayload } from "../types";
-import { emptyState, pageHeader } from "./components";
+import { emptyState, pageHeader, deviceLabel } from "./components";
 
 function fmtSize(b: number): string {
   if (b <= 0) return "0 B";
@@ -26,7 +26,7 @@ export async function photosView(): Promise<HTMLElement> {
     try {
       const list = (await api.listDevices()).filter((d) => d.state === "device");
       deviceSelect.replaceChildren(...(list.length
-        ? list.map((d) => el("option", { value: d.serial }, `${d.model || d.serial} · ${d.serial}`))
+        ? list.map((d) => el("option", { value: d.serial }, `${deviceLabel(d)} · ${d.serial}`))
         : [el("option", { value: "" }, "无可用设备")]));
     } catch {
       deviceSelect.replaceChildren(el("option", { value: "" }, "ADB 不可用"));

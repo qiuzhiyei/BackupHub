@@ -2,7 +2,7 @@ import { el, esc, fmtDate } from "../dom";
 import { navigate } from "../router";
 import * as api from "../api";
 import type { BackupSnapshot, DeviceRecord, DeviceStatus } from "../types";
-import { emptyState, pageHeader, statChip, barRow } from "./components";
+import { emptyState, pageHeader, statChip, barRow, deviceLabel } from "./components";
 
 let pollTimer: number | undefined;
 
@@ -38,7 +38,7 @@ function compactLiveCard(d: DeviceStatus): HTMLElement {
     el("div", { class: "card-top" },
       el("div", { class: "card-icon sm" }, "📱"),
       el("div", { class: "card-info" },
-        el("div", { class: "card-title" }, d.model || "未知型号"),
+        el("div", { class: "card-title" }, deviceLabel(d)),
         el("div", { class: "card-sub" }, esc(d.serial)),
       ),
       stateBadge(d.state),

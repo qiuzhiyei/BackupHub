@@ -2,7 +2,7 @@ import { el, esc, toast } from "../dom";
 import { navigate } from "../router";
 import * as api from "../api";
 import type { BackupOptions, DeviceStatus, DeviceRecord, ProgressPayload } from "../types";
-import { emptyState, pageHeader } from "./components";
+import { emptyState, pageHeader, deviceLabel } from "./components";
 
 export async function backupView(p: { query: URLSearchParams }): Promise<HTMLElement> {
   const preSerial = p.query.get("serial") || "";
@@ -64,8 +64,8 @@ export async function backupView(p: { query: URLSearchParams }): Promise<HTMLEle
       el("div", { class: "card-top" },
         el("div", { class: "card-icon" }, "📱"),
         el("div", { class: "card-info" },
-          el("div", { class: "card-title" }, d.model || "未知型号"),
-          el("div", { class: "card-sub" }, [d.brand, d.manufacturer].filter(Boolean).join(" · ")),
+          el("div", { class: "card-title" }, deviceLabel(d)),
+          el("div", { class: "card-sub" }, d.manufacturer || d.brand || "—"),
         ),
         el("span", { class: "badge badge-ok" }, "就绪"),
       ),
@@ -83,7 +83,7 @@ export async function backupView(p: { query: URLSearchParams }): Promise<HTMLEle
     }
     const dev = ready.find((d) => d.serial === selectedSerial)!;
     const rec = records.find((r) => r.serial === selectedSerial);
-    const defaultName = rec?.custom_name || `${dev.brand || ""} ${dev.model || ""}`.trim() || dev.serial;
+    const defaultName = rec?.custom_name || deviceLabel(dev);
 
     const nameInput = el("input", {
       class: "input",

@@ -163,6 +163,12 @@ export function statChip(label: string, value: string | number, ico = ""): HTMLE
 
 export { fmtDateShort };
 
+/** 统一的设备显示名：品牌 型号（如 Xiaomi 23116PN5BC），缺则回退序列号 */
+export function deviceLabel(d: { brand?: string; model?: string; serial: string }): string {
+  const bm = [d.brand, d.model].filter(Boolean).join(" ").trim();
+  return bm || d.serial;
+}
+
 /** 紧凑分页器：上一页/下一页 + 跳转到第几页（无数字条、无首页末页） */
 export function createCompactPager(
   page: number,
