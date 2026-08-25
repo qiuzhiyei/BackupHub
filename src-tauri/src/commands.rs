@@ -8,7 +8,7 @@ use crate::backup;
 use crate::export;
 use crate::models::{
     BackupOptions, BackupSnapshot, Contact, DeviceRecord, DeviceStatus, PageQuery, PageResult,
-    PullSummary, Sms, SmsThread,
+    PhotoFolder, PullSummary, Sms, SmsThread,
 };
 use crate::storage::{AppConfig, Storage};
 
@@ -87,11 +87,17 @@ pub fn diagnose_provider(
     adb::query_raw(&adb, &serial, &uri)
 }
 
-/// 扫描设备相册，按原目录分组返回
+/// 扫描设备相册，按原目录分组返回（后台线程，大相册不卡 UI）
 #[tauri::command]
-pub fn scan_photos(serial: String, state: State<AppState>) -> Result<Vec<crate::models::PhotoFolder>, String> {
+pub async fn scan_photos(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    serial: String,
+) -> Result<Vec<PhotoFolder>, String> {
     let adb = resolve_adb(&state)?;
-    crate::media::scan_photos(&adb, &serial)
+    tauri::async_runtime::spawn_blocking(move || crate::media::scan_photos(&app, &adb, &serial))
+        .await
+        .map_err(|e| format!("任务异常: {}", e))?
 }
 
 /// 拉取选中的相册目录到本地（在所选父目录下自动生成 BackupHub_设备_时间 子目录）

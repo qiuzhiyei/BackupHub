@@ -7,7 +7,13 @@ use crate::adb;
 use crate::models::{PhotoFile, PhotoFolder, ProgressPayload};
 
 /// 扫描设备相册（content://media/external/images/media），按原目录分组
-pub fn scan_photos(adb: &PathBuf, serial: &str) -> Result<Vec<PhotoFolder>, String> {
+/// 覆盖 MediaStore 已索引的全部图片（DCIM/Pictures/Download 等）；
+/// .nomedia 目录与 app 私有目录由系统排除（不可备份，也不算遗漏）
+pub fn scan_photos(app: &AppHandle, adb: &PathBuf, serial: &str) -> Result<Vec<PhotoFolder>, String> {
+    let _ = app.emit(
+        "media://progress",
+        ProgressPayload { stage: "scan".into(), current: 0, total: 0, message: "正在扫描 MediaStore…".into() },
+    );
     // 个别 ROM 对 display_name/_size 等列校验严格，整条查询会因无效列失败；
     // 先用常用投影，失败则降级为仅 _data（文件名从路径 basename 推导）
     let rows = match adb::query_provider(
@@ -54,6 +60,16 @@ pub fn scan_photos(adb: &PathBuf, serial: &str) -> Result<Vec<PhotoFolder>, Stri
         })
         .collect();
     folders.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    let total_count: usize = folders.iter().map(|f| f.count).sum();
+    let _ = app.emit(
+        "media://progress",
+        ProgressPayload {
+            stage: "done".into(),
+            current: folders.len(),
+            total: total_count,
+            message: format!("扫描完成：{} 个目录 / {} 张", folders.len(), total_count),
+        },
+    );
     Ok(folders)
 }
 
