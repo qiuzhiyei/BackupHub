@@ -79,7 +79,7 @@ pub fn pull_photo_folders(
     let model = get("ro.product.model");
     let label = device_label(&brand, &model, serial);
     let now = chrono::Local::now().format("%Y-%m-%d_%H-%M").to_string();
-    let dest = PathBuf::from(parent).join(format!("BackupHub_{}_{}", label, now));
+    let dest = PathBuf::from(parent).join(format!("BackupHub_{}_{}_PHOTO", label, now));
     std::fs::create_dir_all(&dest).map_err(|e| format!("无法创建目标目录: {}", e))?;
     let dest_str = dest.to_string_lossy().to_string();
 

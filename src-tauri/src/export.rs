@@ -52,8 +52,10 @@ fn build_export_name(meta: &BackupSnapshot) -> String {
     if !date.is_empty() {
         parts.push(date);
     }
-    if parts.is_empty() {
-        parts.push(meta.id.clone());
+    // 数据类型标记：PIM = 短信/通话/通讯录（Personal Information Manager）
+    parts.push("PIM".into());
+    if parts.len() == 1 {
+        parts.insert(0, meta.id.clone());
     }
     parts.join("_")
 }
