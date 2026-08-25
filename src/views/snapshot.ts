@@ -7,7 +7,7 @@ import { promptDialog } from "../modal";
 
 type Tab = "sms" | "calls" | "contacts";
 const PAGE_SIZE = 50;
-const THREAD_PAGE = 30;
+const THREAD_PAGE = 8;
 const MSG_PAGE = 50;
 
 export async function snapshotView(p: { params: Record<string, string> }): Promise<HTMLElement> {
