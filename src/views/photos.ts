@@ -26,7 +26,7 @@ export async function photosView(): Promise<HTMLElement> {
     try {
       const list = (await api.listDevices()).filter((d) => d.state === "device");
       deviceSelect.replaceChildren(...(list.length
-        ? list.map((d) => el("option", { value: d.serial }, `${deviceLabel(d)} · ${d.serial}`))
+        ? list.map((d) => el("option", { value: d.serial }, deviceLabel(d)))
         : [el("option", { value: "" }, "无可用设备")]));
     } catch {
       deviceSelect.replaceChildren(el("option", { value: "" }, "ADB 不可用"));
