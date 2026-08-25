@@ -1,6 +1,7 @@
 import { el } from "./dom";
 import { startRouter } from "./router";
-import { adbStatus } from "./api";
+import * as api from "./api";
+import type { ProgressPayload } from "./types";
 
 function buildShell(): void {
   const app = el("div", { class: "app" },
@@ -25,6 +26,14 @@ function buildShell(): void {
     el("main", { class: "main" },
       el("header", { class: "topbar" },
         el("div", { class: "topbar-title" }, "BackupHub"),
+        el("div", { class: "topbar-task", style: { display: "none" } },
+          el("span", { class: "tt-ico" }, "🖼️"),
+          el("div", { class: "tt-body" },
+            el("div", { class: "tt-text" }, ""),
+            el("div", { class: "tt-bar" }, el("div", { class: "tt-fill" })),
+          ),
+          el("button", { class: "btn btn-sm btn-ghost tt-open", style: { display: "none" } }, "打开文件夹"),
+        ),
         el("div", { class: "topbar-status" }, "ADB: 检测中…"),
       ),
       el("section", { id: "view" }),
@@ -34,15 +43,51 @@ function buildShell(): void {
   document.body.appendChild(el("div", { id: "toast-host" }));
 }
 
+// 全局照片拉取进度徽标：切页不丢失
+function setupMediaProgress(): void {
+  const task = document.querySelector(".topbar-task") as HTMLElement | null;
+  if (!task) return;
+  const text = task.querySelector(".tt-text") as HTMLElement;
+  const fill = task.querySelector(".tt-fill") as HTMLElement;
+  const openBtn = task.querySelector(".tt-open") as HTMLButtonElement;
+  let hideT: number | undefined;
+  let lastDest = "";
+
+  void api.onMediaProgress((p: ProgressPayload) => {
+    task.style.display = "";
+    openBtn.style.display = "none";
+    const pct = p.total > 0 ? Math.round((p.current / Math.max(p.total, 1)) * 100) : 0;
+    fill.style.width = `${pct}%`;
+    if (p.stage === "done") {
+      fill.style.width = "100%";
+      text.textContent = "✓ " + p.message;
+      const m = p.message.match(/到 (.+)$/);
+      if (m) {
+        lastDest = m[1];
+        openBtn.style.display = "";
+        openBtn.onclick = () => void api.openFolder(lastDest);
+      }
+      window.clearTimeout(hideT);
+      hideT = window.setTimeout(() => { task.style.display = "none"; }, 20000);
+    } else if (p.stage === "error") {
+      text.textContent = "⚠ " + p.message;
+      window.clearTimeout(hideT);
+      hideT = window.setTimeout(() => { task.style.display = "none"; }, 8000);
+    } else {
+      text.textContent = `🖼️ 照片拉取 ${p.current + 1}/${p.total}`;
+    }
+  });
+}
+
 window.addEventListener("DOMContentLoaded", async () => {
   buildShell();
   startRouter();
-  // 延迟加载一次 adb 状态显示
+  setupMediaProgress();
   const status = document.querySelector(".topbar-status");
   if (status) {
     try {
-      const s = await adbStatus();
-      status.textContent = s.available ? `ADB 已就绪` : "ADB 未就绪";
+      const s = await api.adbStatus();
+      status.textContent = s.available ? "ADB 已就绪" : "ADB 未就绪";
       status.classList.add(s.available ? "ok" : "err");
     } catch {
       status.textContent = "ADB 状态未知";
