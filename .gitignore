@@ -1,0 +1,74 @@
+# ========================
+# Node / npm
+# ========================
+node_modules/
+dist/
+dist-ssr/
+*.local
+.npm
+.pnpm-store/
+
+# 包管理器锁文件需要跟踪（package-lock.json / Cargo.lock 均保留）
+
+# 日志
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# ========================
+# 环境变量 / 密钥（切勿提交）
+# ========================
+.env
+.env.*
+!.env.example
+
+# ========================
+# TypeScript / Vite 构建产物
+# ========================
+*.tsbuildinfo
+.vite/
+coverage/
+*.lcov
+
+# ========================
+# Rust / Cargo
+# ========================
+# src-tauri/target 由 src-tauri/.gitignore 处理，这里兜底
+target/
+**/*.rs.bk
+Cargo.bak
+
+# ========================
+# Tauri 生成物
+# ========================
+# src-tauri/gen/schemas 由 src-tauri/.gitignore 处理
+# 应用打包输出位于 target/release/bundle，已随 target 忽略
+
+# ========================
+# 操作系统
+# ========================
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# ========================
+# 编辑器 / IDE
+# ========================
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.fleet/
+.history/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+*~

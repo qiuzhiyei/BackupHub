@@ -1,0 +1,7 @@
+# 统一行尾：仓库内源码使用 LF
+* text=auto eol=lf
+
+# 二进制资源
+*.png binary
+*.icns binary
+*.ico binary
