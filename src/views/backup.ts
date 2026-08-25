@@ -8,7 +8,7 @@ export async function backupView(p: { query: URLSearchParams }): Promise<HTMLEle
   const preSerial = p.query.get("serial") || "";
 
   const wrap = el("div", { class: "page" },
-    pageHeader("新建备份"),
+    pageHeader("短信/通话/通讯录备份"),
     el("div", { class: "backup-layout" },
       el("div", { class: "panel", id: "picker-panel" }, emptyState("正在检测设备…")),
       el("div", { class: "panel", id: "form-panel" }),

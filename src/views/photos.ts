@@ -171,7 +171,7 @@ export async function photosView(): Promise<HTMLElement> {
   };
 
   wrap.replaceChildren(
-    pageHeader("相册"),
+    pageHeader("照片备份"),
     el("div", { class: "panel" },
       el("div", { class: "form-row row-inline" },
         el("label", { class: "form-label" }, "设备"),
