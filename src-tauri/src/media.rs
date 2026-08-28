@@ -128,8 +128,14 @@ pub fn pull_media_folders(
         let stage2 = stage;
         let base2 = base.clone();
         let i2 = i;
+        // 节流：仅百分比变化时才推送，避免 adb 高频进度刷屏卡 UI
+        let mut last_pct: Option<u32> = None;
         let res = adb::run_adb_pull_streaming(adb, &args, |pct, _line| {
             if let Some(p) = pct {
+                if last_pct == Some(p) {
+                    return;
+                }
+                last_pct = Some(p);
                 let _ = app2.emit(
                     "media://progress",
                     ProgressPayload {
