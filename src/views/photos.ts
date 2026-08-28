@@ -55,22 +55,19 @@ export async function photosView(): Promise<HTMLElement> {
       return;
     }
     const allSelected = folders.every((f) => selected.has(f.dir));
-    const selSize = folders.filter((f) => selected.has(f.dir)).reduce((a, f) => a + f.total_size, 0);
     folderWrap.replaceChildren(
       el("div", { class: "photo-folder photo-folder-head" },
         checkboxEl(allSelected, () => {
           if (allSelected) selected.clear();
           else folders.forEach((f) => selected.add(f.dir));
           renderFolders();
-          renderFooter(selSize);
         }),
         el("span", { class: "pf-name" }, `${folders.length} 个目录`),
         el("span", { class: "pf-meta" }, `共 ${folders.reduce((a, f) => a + f.count, 0)} 张`),
       ),
       ...folders.map(folderRow),
     );
-    void 0;
-    renderFooter(selSize);
+    renderFooter();
   }
 
   function folderRow(f: PhotoFolder): HTMLElement {
@@ -82,7 +79,6 @@ export async function photosView(): Promise<HTMLElement> {
         if (checked) selected.delete(f.dir);
         else selected.add(f.dir);
         renderFolders();
-        renderFooter();
       }),
       el("span", { class: `pf-toggle ${checked ? "" : "closed"}`, onclick: (e: Event) => {
         e.stopPropagation();
@@ -118,8 +114,9 @@ export async function photosView(): Promise<HTMLElement> {
     return el("label", { class: "pf-check" }, cb);
   }
 
-  function renderFooter(selSize = 0) {
+  function renderFooter() {
     const selCount = selected.size;
+    const selSize = folders.filter((f) => selected.has(f.dir)).reduce((a, f) => a + f.total_size, 0);
     const pullBtn = el("button", {
       class: "btn btn-primary",
       disabled: selCount === 0,
