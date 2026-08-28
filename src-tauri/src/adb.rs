@@ -204,22 +204,25 @@ pub fn list_devices(adb: &PathBuf) -> Result<Vec<DeviceStatus>, String> {
             }
         }
 
-        // 对已授权设备，通过 getprop 补全 manufacturer/brand
+        // 对已授权设备，一次 shell 调用取 manufacturer/brand/model（原来 3 次 adb 进程→1 次）
         let mut manufacturer = String::new();
         let mut brand_final = brand;
         if state == "device" {
-            if let Ok(m) = run_adb(adb, &["-s", &serial, "shell", "getprop", "ro.product.manufacturer"]) {
-                manufacturer = m.trim().to_string();
-            }
-            if let Ok(b) = run_adb(adb, &["-s", &serial, "shell", "getprop", "ro.product.brand"]) {
-                let b = b.trim().to_string();
-                if !b.is_empty() {
-                    brand_final = b;
+            if let Ok(out) = run_adb(adb, &["-s", &serial, "shell", "getprop ro.product.manufacturer; getprop ro.product.brand; getprop ro.product.model"]) {
+                let lines: Vec<&str> = out.lines().collect();
+                if let Some(v) = lines.first() {
+                    manufacturer = v.trim().to_string();
                 }
-            }
-            if model.is_empty() {
-                if let Ok(m) = run_adb(adb, &["-s", &serial, "shell", "getprop", "ro.product.model"]) {
-                    model = m.trim().to_string();
+                if let Some(v) = lines.get(1) {
+                    let b = v.trim().to_string();
+                    if !b.is_empty() {
+                        brand_final = b;
+                    }
+                }
+                if model.is_empty() {
+                    if let Some(v) = lines.get(2) {
+                        model = v.trim().to_string();
+                    }
                 }
             }
         }

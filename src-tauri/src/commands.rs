@@ -71,9 +71,11 @@ pub fn set_adb_path(path: String, state: State<AppState>) -> Result<(), String> 
 }
 
 #[tauri::command]
-pub fn list_devices(state: State<AppState>) -> Result<Vec<DeviceStatus>, String> {
+pub async fn list_devices(state: State<'_, AppState>) -> Result<Vec<DeviceStatus>, String> {
     let adb = resolve_adb(&state)?;
-    adb::list_devices(&adb)
+    tauri::async_runtime::spawn_blocking(move || adb::list_devices(&adb))
+        .await
+        .map_err(|e| format!("任务异常: {}", e))?
 }
 
 /// 诊断：对指定 content uri 做原始查询，返回 stdout+stderr，便于定位读不到数据的原因

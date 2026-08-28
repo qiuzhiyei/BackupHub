@@ -113,6 +113,14 @@ export async function dashboardView(): Promise<HTMLElement> {
   }
 
   async function refreshLive() {
+    // 离开仪表盘后 DOM 已脱离文档，自动停止轮询，避免后台持续刷 adb 卡系统
+    if (!document.contains(liveWrap)) {
+      if (pollTimer) {
+        clearInterval(pollTimer);
+        pollTimer = undefined;
+      }
+      return;
+    }
     try {
       const list = await api.listDevices();
       liveWrap.replaceChildren(...(list.length
@@ -123,7 +131,7 @@ export async function dashboardView(): Promise<HTMLElement> {
     }
   }
 
-  pollTimer = window.setInterval(refreshLive, 4000);
+  pollTimer = window.setInterval(refreshLive, 6000);
   void load();
   void refreshLive();
 
