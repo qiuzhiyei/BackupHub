@@ -111,18 +111,37 @@ pub fn pull_media_folders(
 
     let total = folders.len();
     let mut ok = 0usize;
+    let stage = if tag == "VIDEO" { "video" } else { "photo" };
     for (i, folder) in folders.iter().enumerate() {
+        let base = basename(folder);
         let _ = app.emit(
             "media://progress",
             ProgressPayload {
-                stage: "photo".into(),
+                stage: stage.into(),
                 current: i,
                 total,
-                message: format!("正在拉取 {} ({}/{})", basename(folder), i + 1, total),
+                message: format!("正在拉取 {} ({}/{})", base, i + 1, total),
             },
         );
         let args: Vec<&str> = vec!["-s", serial, "pull", folder.as_str(), &dest_str];
-        match adb::run_adb(adb, &args) {
+        let app2 = app;
+        let stage2 = stage;
+        let base2 = base.clone();
+        let i2 = i;
+        let res = adb::run_adb_pull_streaming(adb, &args, |pct, _line| {
+            if let Some(p) = pct {
+                let _ = app2.emit(
+                    "media://progress",
+                    ProgressPayload {
+                        stage: stage2.into(),
+                        current: i2,
+                        total,
+                        message: format!("正在拉取 {} — {}%", base2, p),
+                    },
+                );
+            }
+        });
+        match res {
             Ok(_) => ok += 1,
             Err(e) => {
                 let _ = app.emit(

@@ -1,6 +1,7 @@
 use std::collections::HashMap;
+use std::io::Read;
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 use crate::models::DeviceStatus;
 
@@ -94,6 +95,75 @@ pub fn run_adb(adb: &PathBuf, args: &[&str]) -> Result<String, String> {
         return Err(combined.trim().to_string());
     }
     Ok(String::from_utf8_lossy(&out.stdout).to_string())
+}
+
+/// 流式执行 adb pull：逐块读取 stderr 解析百分比进度并回调，
+/// 用于大文件（视频）拉取时显示实时百分比，避免长时间无反馈
+pub fn run_adb_pull_streaming(
+    adb: &PathBuf,
+    args: &[&str],
+    mut on_progress: impl FnMut(Option<u32>, &str),
+) -> Result<(), String> {
+    let mut cmd = Command::new(adb);
+    cmd.args(args);
+    // stdout 不需要（adb 把进度写到 stderr），置 null 避免 pipe 缓冲死锁
+    cmd.stdout(Stdio::null()).stderr(Stdio::piped());
+    let mut child = cmd.spawn().map_err(|e| format!("无法执行 adb: {}", e))?;
+    let mut stderr = child.stderr.take().ok_or("无法获取 stderr")?;
+
+    let mut buf = String::new();
+    let mut chunk = [0u8; 2048];
+    loop {
+        let n = stderr.read(&mut chunk).map_err(|e| e.to_string())?;
+        if n == 0 {
+            break;
+        }
+        // adb 输出可能非 UTF8 边界，用 lossy
+        buf.push_str(&String::from_utf8_lossy(&chunk[..n]));
+        // adb 用 \r 更新进度条，按 \r 或 \n 分段处理
+        loop {
+            let pos = buf.find(|c| c == '\r' || c == '\n');
+            let pos = match pos {
+                Some(p) => p,
+                None => break,
+            };
+            let line: String = buf.drain(..=pos).collect();
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+            let pct = extract_percent(line);
+            on_progress(pct, line);
+        }
+    }
+
+    let status = child.wait().map_err(|e| e.to_string())?;
+    if !status.success() {
+        return Err(format!("adb 拉取未成功（退出码 {}）", status.code().unwrap_or(-1)));
+    }
+    Ok(())
+}
+
+/// 从一行 adb 输出里提取最后一个 "NN%"
+fn extract_percent(line: &str) -> Option<u32> {
+    let bytes = line.as_bytes();
+    let mut last: Option<u32> = None;
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' {
+            let mut j = i;
+            while j > 0 && bytes[j - 1].is_ascii_digit() {
+                j -= 1;
+            }
+            if j < i {
+                if let Ok(n) = line[j..i].parse::<u32>() {
+                    last = Some(n);
+                }
+            }
+        }
+        i += 1;
+    }
+    last
 }
 
 /// 列出当前通过 USB 连接的设备
