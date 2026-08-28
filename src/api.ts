@@ -140,12 +140,24 @@ export async function scanPhotos(serial: string): Promise<PhotoFolder[]> {
   return invoke<PhotoFolder[]>("scan_photos", { serial });
 }
 
+export async function scanVideos(serial: string): Promise<PhotoFolder[]> {
+  return invoke<PhotoFolder[]>("scan_videos", { serial });
+}
+
 export async function pullPhotos(
   serial: string,
   folders: string[],
   parent: string,
 ): Promise<PullSummary> {
   return invoke<PullSummary>("pull_photos", { serial, folders, parent });
+}
+
+export async function pullVideos(
+  serial: string,
+  folders: string[],
+  parent: string,
+): Promise<PullSummary> {
+  return invoke<PullSummary>("pull_videos", { serial, folders, parent });
 }
 
 export function onMediaProgress(cb: (p: ProgressPayload) => void): Promise<UnlistenFn> {

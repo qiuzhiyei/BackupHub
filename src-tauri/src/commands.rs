@@ -100,7 +100,20 @@ pub async fn scan_photos(
         .map_err(|e| format!("任务异常: {}", e))?
 }
 
-/// 拉取选中的相册目录到本地（在所选父目录下自动生成 BackupHub_设备_时间 子目录）
+/// 扫描设备视频，按原目录分组返回
+#[tauri::command]
+pub async fn scan_videos(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    serial: String,
+) -> Result<Vec<PhotoFolder>, String> {
+    let adb = resolve_adb(&state)?;
+    tauri::async_runtime::spawn_blocking(move || crate::media::scan_videos(&app, &adb, &serial))
+        .await
+        .map_err(|e| format!("任务异常: {}", e))?
+}
+
+/// 拉取选中的相册目录到本地（在所选父目录下自动生成 BackupHub_设备_时间_PHOTO 子目录）
 #[tauri::command]
 pub async fn pull_photos(
     app: AppHandle,
@@ -111,7 +124,26 @@ pub async fn pull_photos(
 ) -> Result<PullSummary, String> {
     let adb = resolve_adb(&state)?;
     let res = tauri::async_runtime::spawn_blocking(move || {
-        crate::media::pull_photo_folders(&app, &adb, &serial, &folders, &parent)
+        crate::media::pull_media_folders(&app, &adb, &serial, &folders, &parent, "PHOTO")
+    })
+    .await
+    .map_err(|e| format!("任务异常: {}", e))??;
+    let (folders, dest) = res;
+    Ok(PullSummary { folders, dest })
+}
+
+/// 拉取选中的视频目录到本地（BackupHub_设备_时间_VIDEO）
+#[tauri::command]
+pub async fn pull_videos(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    serial: String,
+    folders: Vec<String>,
+    parent: String,
+) -> Result<PullSummary, String> {
+    let adb = resolve_adb(&state)?;
+    let res = tauri::async_runtime::spawn_blocking(move || {
+        crate::media::pull_media_folders(&app, &adb, &serial, &folders, &parent, "VIDEO")
     })
     .await
     .map_err(|e| format!("任务异常: {}", e))??;

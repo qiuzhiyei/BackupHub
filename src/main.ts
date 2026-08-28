@@ -17,6 +17,7 @@ function buildShell(): void {
         el("a", { class: "nav-link", href: "#/" }, el("span", { class: "nav-ico" }, "📊"), "仪表盘"),
         el("a", { class: "nav-link", href: "#/backup" }, el("span", { class: "nav-ico" }, "💾"), "短信/通话/通讯录备份"),
         el("a", { class: "nav-link", href: "#/photos" }, el("span", { class: "nav-ico" }, "🖼️"), "照片备份"),
+        el("a", { class: "nav-link", href: "#/videos" }, el("span", { class: "nav-ico" }, "🎬"), "视频备份"),
         el("a", { class: "nav-link", href: "#/data" }, el("span", { class: "nav-ico" }, "📂"), "查看数据"),
         el("a", { class: "nav-link", href: "#/devices" }, el("span", { class: "nav-ico" }, "📱"), "设备"),
         el("a", { class: "nav-link", href: "#/settings" }, el("span", { class: "nav-ico" }, "⚙️"), "设置"),

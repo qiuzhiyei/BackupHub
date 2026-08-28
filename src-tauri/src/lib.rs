@@ -32,6 +32,8 @@ pub fn run() {
             commands::diagnose_provider,
             commands::scan_photos,
             commands::pull_photos,
+            commands::scan_videos,
+            commands::pull_videos,
             commands::list_device_records,
             commands::list_snapshots,
             commands::get_snapshot,
