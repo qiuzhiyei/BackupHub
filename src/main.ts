@@ -27,55 +27,100 @@ function buildShell(): void {
     el("main", { class: "main" },
       el("header", { class: "topbar" },
         el("div", { class: "topbar-title" }, "BackupHub"),
-        el("div", { class: "topbar-task", style: { display: "none" } },
-          el("span", { class: "tt-ico" }, "⏳"),
-          el("span", { class: "tt-text" }, ""),
-          el("div", { class: "tt-bar" }, el("div", { class: "tt-fill" })),
-          el("button", { class: "btn btn-sm btn-ghost tt-open", style: { display: "none" } }, "打开"),
-        ),
         el("div", { class: "topbar-status" }, "ADB: 检测中…"),
       ),
       el("section", { id: "view" }),
+      el("div", { class: "taskbar", style: { display: "none" } }),
     ),
   );
   document.body.replaceChildren(app);
   document.body.appendChild(el("div", { id: "toast-host" }));
 }
 
-// 顶栏通用任务进度徽标：照片拉取 / 短信备份 等都走它，切页不丢
+// 底部状态栏：每项操作一行，并发时不冲突
+interface TaskEntry { row: HTMLElement; done: boolean; }
+
 function setupTaskProgress(): void {
-  const task = document.querySelector(".topbar-task") as HTMLElement | null;
-  if (!task) return;
-  const text = task.querySelector(".tt-text") as HTMLElement;
-  const fill = task.querySelector(".tt-fill") as HTMLElement;
-  const openBtn = task.querySelector(".tt-open") as HTMLButtonElement;
-  let hideT: number | undefined;
-  let lastDest = "";
+  const taskbar = document.querySelector(".taskbar") as HTMLElement | null;
+  if (!taskbar) return;
+  const tasks = new Map<string, TaskEntry>();
+  let lastGroup = "";
+
+  const groupOf = (stage: string): string => {
+    if (stage === "scan") return "scan";
+    if (stage === "photo") return "pull-photo";
+    if (stage === "video") return "pull-video";
+    if (["sms", "calls", "contacts", "saving", "start"].includes(stage)) return "backup";
+    return "";
+  };
+  const iconFor = (g: string): string => {
+    if (g === "scan") return "🔍";
+    if (g === "pull-photo") return "🖼️";
+    if (g === "pull-video") return "🎬";
+    if (g === "backup") return "💾";
+    return "⏳";
+  };
+  const refresh = () => { taskbar.style.display = tasks.size > 0 ? "" : "none"; };
+
+  const setText = (row: HTMLElement, t: string) => {
+    const el2 = row.querySelector(".tb-text"); if (el2) el2.textContent = t;
+  };
+  const setFill = (row: HTMLElement, pct: number) => {
+    const f = row.querySelector(".tb-fill"); if (f) (f as HTMLElement).style.width = `${pct}%`;
+  };
 
   const onP = (p: ProgressPayload) => {
-    task.style.display = "";
-    openBtn.style.display = "none";
-    const pct = p.total > 0
-      ? Math.round((p.current / Math.max(p.total, 1)) * 100)
-      : p.stage === "done" ? 100 : 0;
-    fill.style.width = `${pct}%`;
     if (p.stage === "done") {
-      text.textContent = "✓ " + p.message;
-      const m = p.message.match(/到\s+(.+)$/);
-      if (m) {
-        lastDest = m[1];
-        openBtn.style.display = "";
-        openBtn.onclick = () => void api.openFolder(lastDest);
+      let g = "";
+      if (p.message.includes("扫描")) g = "scan";
+      else if (p.message.includes("拉取")) g = lastGroup;
+      else g = "backup";
+      const t = g ? tasks.get(g) : undefined;
+      if (t) {
+        t.done = true;
+        setText(t.row, "✓ " + p.message);
+        setFill(t.row, 100);
+        t.row.classList.add("task-done");
+        const m = p.message.match(/到\s+(.+)$/);
+        if (m) {
+          const dest = m[1];
+          const btn = el("button", { class: "btn btn-sm btn-ghost tb-open" }, "打开");
+          btn.onclick = () => void api.openFolder(dest);
+          t.row.appendChild(btn);
+        }
+        setTimeout(() => { tasks.delete(g); t.row.remove(); refresh(); }, 8000);
       }
-      window.clearTimeout(hideT);
-      hideT = window.setTimeout(() => { task.style.display = "none"; }, 15000);
-    } else if (p.stage === "error") {
-      text.textContent = "⚠ " + p.message;
-      window.clearTimeout(hideT);
-      hideT = window.setTimeout(() => { task.style.display = "none"; }, 8000);
-    } else {
-      text.textContent = p.message;
+      refresh();
+      return;
     }
+    if (p.stage === "error") {
+      const t = lastGroup ? tasks.get(lastGroup) : undefined;
+      if (t) {
+        setText(t.row, "⚠ " + p.message);
+        t.row.classList.add("task-error");
+        setTimeout(() => { if (lastGroup) { tasks.delete(lastGroup); t.row.remove(); refresh(); } }, 8000);
+      }
+      refresh();
+      return;
+    }
+    const g = groupOf(p.stage);
+    if (!g) return;
+    lastGroup = g;
+    let t = tasks.get(g);
+    if (!t) {
+      const row = el("div", { class: "taskbar-row" },
+        el("span", { class: "tb-icon" }, iconFor(g)),
+        el("span", { class: "tb-text" }, p.message),
+        el("div", { class: "tb-bar" }, el("div", { class: "tb-fill" })),
+      );
+      taskbar.appendChild(row);
+      t = { row, done: false };
+      tasks.set(g, t);
+    }
+    setText(t.row, p.message);
+    const pct = p.total > 0 ? Math.round((p.current / Math.max(p.total, 1)) * 100) : 0;
+    setFill(t.row, pct);
+    refresh();
   };
   void api.onMediaProgress(onP);
   void api.onBackupProgress(onP);
