@@ -1462,6 +1462,17 @@ body {
   white-space: nowrap;
   max-width: 220px;
 }
+.pf-app {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--primary);
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  padding: 2px 10px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
 .pf-path {
   font-size: 12px;
   color: var(--text-soft);

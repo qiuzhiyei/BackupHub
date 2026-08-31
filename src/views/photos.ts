@@ -122,7 +122,7 @@ export async function mediaView(kind: MediaKind): Promise<HTMLElement> {
         }
         row.querySelector(".pf-toggle")?.classList.toggle("closed", !shown);
       } }, "▾"),
-      el("span", { class: "pf-name" }, esc(f.name)),
+      f.app ? el("span", { class: "pf-app" }, esc(f.app)) : el("span", { class: "pf-name" }, esc(f.name)),
       el("span", { class: "pf-path" }, esc(f.dir)),
       el("span", { class: "pf-meta" }, `${f.count} 个${word} · ${fmtSize(f.total_size)}`),
     );
@@ -272,7 +272,7 @@ export async function mediaView(kind: MediaKind): Promise<HTMLElement> {
         scanBtn,
         el("button", { class: "btn btn-ghost btn-sm", onclick: () => void refreshDevices() }, "刷新"),
       ),
-      el("div", { class: "hint-line" }, `扫描后按设备原目录分类列出${word}，默认全选（=全部备份），可取消个别目录。点「开始备份」只拉取扫描到的${word}文件（不拉整个目录，避免 .bin 等无关文件），按原目录结构存入「备份目录」下的 <设备>/<时间>/${kind === "photos" ? "PHOTO" : "VIDEO"} 子目录，并生成备份记录（仪表盘/查看数据/设备页可见）。备份目录可在设置中改。`),
+      el("div", { class: "hint-line" }, `扫描后按设备原目录分类列出${word}，默认全选（=全部备份），可取消个别目录。同一应用的多个子目录会归拢为一项（如「酷狗音乐」），点「开始备份」只拉取扫描到的${word}文件（不拉整个目录，避免 .bin 等无关文件）。应用私有目录（Android/data|media|obb）下的内容按应用名归类存放，便于查找；其余按原目录结构存入「备份目录」下的 <设备>/<时间>/${kind === "photos" ? "PHOTO" : "VIDEO"} 子目录，并生成备份记录（仪表盘/查看数据/设备页可见）。备份目录可在设置中改。`),
     ),
     folderWrap,
     footer,

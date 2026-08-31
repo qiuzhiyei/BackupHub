@@ -130,6 +130,8 @@ export interface PhotoFile {
 export interface PhotoFolder {
   dir: string;
   name: string;
+  /** 所属应用名（应用私有目录解析），非应用目录为 null */
+  app: string | null;
   count: number;
   total_size: number;
   files: PhotoFile[];
