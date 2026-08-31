@@ -5,6 +5,7 @@ import { openPath } from "@tauri-apps/plugin-opener";
 
 import type {
   AdbStatus,
+  BackupDirInfo,
   BackupOptions,
   BackupSnapshot,
   CallLog,
@@ -118,12 +119,11 @@ export async function pickExportDir(): Promise<string | null> {
 }
 
 export async function exportSnapshot(
-  serial: string,
   id: string,
   format: "csv" | "json",
   dir: string,
 ): Promise<string> {
-  return invoke<string>("export_snapshot", { serial, id, format, dir });
+  return invoke<string>("export_snapshot", { id, format, dir });
 }
 
 export async function importSnapshot(dir: string): Promise<BackupSnapshot> {
@@ -147,17 +147,23 @@ export async function scanVideos(serial: string): Promise<PhotoFolder[]> {
 export async function pullPhotos(
   serial: string,
   folders: string[],
-  parent: string,
 ): Promise<PullSummary> {
-  return invoke<PullSummary>("pull_photos", { serial, folders, parent });
+  return invoke<PullSummary>("pull_photos", { serial, folders });
 }
 
 export async function pullVideos(
   serial: string,
   folders: string[],
-  parent: string,
 ): Promise<PullSummary> {
-  return invoke<PullSummary>("pull_videos", { serial, folders, parent });
+  return invoke<PullSummary>("pull_videos", { serial, folders });
+}
+
+export async function setBackupDir(path: string): Promise<string> {
+  return invoke<string>("set_backup_dir", { path });
+}
+
+export async function backupDirInfo(): Promise<BackupDirInfo> {
+  return invoke<BackupDirInfo>("backup_dir_info");
 }
 
 export function onMediaProgress(cb: (p: ProgressPayload) => void): Promise<UnlistenFn> {

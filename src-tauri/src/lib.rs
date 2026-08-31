@@ -34,6 +34,8 @@ pub fn run() {
             commands::pull_photos,
             commands::scan_videos,
             commands::pull_videos,
+            commands::set_backup_dir,
+            commands::backup_dir_info,
             commands::list_device_records,
             commands::list_snapshots,
             commands::get_snapshot,

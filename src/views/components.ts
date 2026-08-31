@@ -244,7 +244,7 @@ export function createSnapshotRow(
           const dir = await api.pickExportDir();
           if (!dir) return;
           try {
-            const out = await api.exportSnapshot(s.device_serial, s.id, "json", dir);
+            const out = await api.exportSnapshot(s.id, "json", dir);
             toast("已导出到: " + out, "success");
           } catch (e) {
             toast("导出失败: " + String(e), "error");

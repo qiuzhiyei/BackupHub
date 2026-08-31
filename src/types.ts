@@ -7,6 +7,11 @@ export interface AdbStatus {
   version: string;
 }
 
+export interface BackupDirInfo {
+  configured: string;
+  resolved: string;
+}
+
 export interface DeviceStatus {
   serial: string;
   /** "device" | "unauthorized" | "offline" | "recovery" | ... */

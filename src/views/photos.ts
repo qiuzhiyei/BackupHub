@@ -136,16 +136,14 @@ export async function mediaView(kind: MediaKind): Promise<HTMLElement> {
       const serial = deviceSelect.value;
       if (!serial) { toast("请先选择设备", "error"); return; }
       if (!c.selected.size) { toast(`请至少选择一个目录`, "error"); return; }
-      const dir = await api.pickExportDir();
-      if (!dir) return;
       progressPanel.style.display = "";
       renderProgress({ stage: "start", current: 0, total: c.selected.size, message: "准备拉取…" });
       let unlisten: Awaited<ReturnType<typeof api.onMediaProgress>> | null = null;
       try {
         unlisten = await api.onMediaProgress((p) => renderProgress(p));
         const res = kind === "photos"
-          ? await api.pullPhotos(serial, [...c.selected], dir)
-          : await api.pullVideos(serial, [...c.selected], dir);
+          ? await api.pullPhotos(serial, [...c.selected])
+          : await api.pullVideos(serial, [...c.selected]);
         toast(`完成：成功 ${res.folders}/${c.selected.size} 个目录 → ${res.dest}`, "success");
         progressPanel.appendChild(
           el("button", { class: "btn btn-ghost btn-sm", onclick: () => void api.openFolder(res.dest) }, "打开文件夹"),
@@ -216,7 +214,7 @@ export async function mediaView(kind: MediaKind): Promise<HTMLElement> {
         scanBtn,
         el("button", { class: "btn btn-ghost btn-sm", onclick: () => void refreshDevices() }, "刷新"),
       ),
-      el("div", { class: "hint-line" }, `扫描后按设备原目录分类列出${word}，默认全选（=全部备份），可取消个别目录。点「选中备份到…」选一个父目录，会自动在其下创建 BackupHub_设备_时间_${kind === "photos" ? "PHOTO" : "VIDEO"} 子目录保存。`),
+      el("div", { class: "hint-line" }, `扫描后按设备原目录分类列出${word}，默认全选（=全部备份），可取消个别目录。点「选中备份到…」直接备份到「备份目录」下的 <设备>/<时间>/${kind === "photos" ? "PHOTO" : "VIDEO"} 子目录（备份目录可在设置中改）。`),
     ),
     folderWrap,
     footer,

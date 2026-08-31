@@ -10,7 +10,7 @@ use crate::models::{
     BackupOptions, BackupSnapshot, Contact, DeviceRecord, DeviceStatus, PageQuery, PageResult,
     PhotoFolder, PullSummary, Sms, SmsThread,
 };
-use crate::storage::{AppConfig, Storage};
+use crate::storage::Storage;
 
 pub struct AppState {
     pub storage: Storage,
@@ -66,7 +66,8 @@ pub struct AdbStatus {
 
 #[tauri::command]
 pub fn set_adb_path(path: String, state: State<AppState>) -> Result<(), String> {
-    let cfg = AppConfig { adb_path: path };
+    let mut cfg = state.storage.load_config();
+    cfg.adb_path = path;
     state.storage.save_config(&cfg)
 }
 
@@ -115,18 +116,18 @@ pub async fn scan_videos(
         .map_err(|e| format!("任务异常: {}", e))?
 }
 
-/// 拉取选中的相册目录到本地（在所选父目录下自动生成 BackupHub_设备_时间_PHOTO 子目录）
+/// 拉取选中的相册目录到 <备份根>/<设备>/<时间>/PHOTO
 #[tauri::command]
 pub async fn pull_photos(
     app: AppHandle,
     state: State<'_, AppState>,
     serial: String,
     folders: Vec<String>,
-    parent: String,
 ) -> Result<PullSummary, String> {
     let adb = resolve_adb(&state)?;
+    let backup_dir = state.storage.backup_dir();
     let res = tauri::async_runtime::spawn_blocking(move || {
-        crate::media::pull_media_folders(&app, &adb, &serial, &folders, &parent, "PHOTO")
+        crate::media::pull_media_folders(&app, &adb, &serial, &folders, &backup_dir, "PHOTO")
     })
     .await
     .map_err(|e| format!("任务异常: {}", e))??;
@@ -134,23 +135,48 @@ pub async fn pull_photos(
     Ok(PullSummary { folders, dest })
 }
 
-/// 拉取选中的视频目录到本地（BackupHub_设备_时间_VIDEO）
+/// 拉取选中的视频目录到 <备份根>/<设备>/<时间>/VIDEO
 #[tauri::command]
 pub async fn pull_videos(
     app: AppHandle,
     state: State<'_, AppState>,
     serial: String,
     folders: Vec<String>,
-    parent: String,
 ) -> Result<PullSummary, String> {
     let adb = resolve_adb(&state)?;
+    let backup_dir = state.storage.backup_dir();
     let res = tauri::async_runtime::spawn_blocking(move || {
-        crate::media::pull_media_folders(&app, &adb, &serial, &folders, &parent, "VIDEO")
+        crate::media::pull_media_folders(&app, &adb, &serial, &folders, &backup_dir, "VIDEO")
     })
     .await
     .map_err(|e| format!("任务异常: {}", e))??;
     let (folders, dest) = res;
     Ok(PullSummary { folders, dest })
+}
+
+/// 设置备份根目录（空=用默认）
+#[tauri::command]
+pub fn set_backup_dir(path: String, state: State<AppState>) -> Result<String, String> {
+    let mut cfg = state.storage.load_config();
+    cfg.backup_dir = path;
+    state.storage.save_config(&cfg)?;
+    Ok(state.storage.backup_dir().to_string_lossy().to_string())
+}
+
+/// 获取备份根目录信息（已配置值 + 实际解析值）
+#[derive(serde::Serialize)]
+pub struct BackupDirInfo {
+    pub configured: String,
+    pub resolved: String,
+}
+
+#[tauri::command]
+pub fn backup_dir_info(state: State<AppState>) -> BackupDirInfo {
+    let cfg = state.storage.load_config();
+    BackupDirInfo {
+        configured: cfg.backup_dir.clone(),
+        resolved: state.storage.backup_dir().to_string_lossy().to_string(),
+    }
 }
 
 #[tauri::command]
@@ -240,24 +266,23 @@ pub fn update_snapshot_custom_name(
 
 #[tauri::command]
 pub fn export_snapshot(
-    serial: String,
     id: String,
     format: String,
     dir: String,
     state: State<AppState>,
 ) -> Result<String, String> {
     let dir = PathBuf::from(dir);
-    let out = export::export_snapshot(&state.storage, &serial, &id, &format, &dir)?;
+    let out = export::export_snapshot(&state.storage, &id, &format, &dir)?;
     Ok(out.to_string_lossy().to_string())
 }
 
 #[tauri::command]
 pub fn query_sms(query: PageQuery, state: State<AppState>) -> Result<PageResult<crate::models::Sms>, String> {
-    let snap = state
+    let _snap = state
         .storage
         .get_snapshot(&query.snapshot_id)
         .ok_or_else(|| "快照不存在".to_string())?;
-    let mut list = state.storage.load_sms(&snap.device_serial, &query.snapshot_id);
+    let mut list = state.storage.load_sms(&query.snapshot_id);
     apply_sms_filter(&mut list, &query);
     Ok(paginate(&list, query.page, query.page_size))
 }
@@ -267,11 +292,11 @@ pub fn query_calls(
     query: PageQuery,
     state: State<AppState>,
 ) -> Result<PageResult<crate::models::CallLog>, String> {
-    let snap = state
+    let _snap = state
         .storage
         .get_snapshot(&query.snapshot_id)
         .ok_or_else(|| "快照不存在".to_string())?;
-    let mut list = state.storage.load_calls(&snap.device_serial, &query.snapshot_id);
+    let mut list = state.storage.load_calls(&query.snapshot_id);
     apply_call_filter(&mut list, &query);
     Ok(paginate(&list, query.page, query.page_size))
 }
@@ -281,23 +306,23 @@ pub fn query_contacts(
     query: PageQuery,
     state: State<AppState>,
 ) -> Result<PageResult<crate::models::Contact>, String> {
-    let snap = state
+    let _snap = state
         .storage
         .get_snapshot(&query.snapshot_id)
         .ok_or_else(|| "快照不存在".to_string())?;
-    let mut list = state.storage.load_contacts(&snap.device_serial, &query.snapshot_id);
+    let mut list = state.storage.load_contacts(&query.snapshot_id);
     apply_contact_filter(&mut list, &query);
     Ok(paginate(&list, query.page, query.page_size))
 }
 
 #[tauri::command]
 pub fn list_sms_threads(query: PageQuery, state: State<AppState>) -> Result<PageResult<SmsThread>, String> {
-    let snap = state
+    let _snap = state
         .storage
         .get_snapshot(&query.snapshot_id)
         .ok_or_else(|| "快照不存在".to_string())?;
-    let sms = state.storage.load_sms(&snap.device_serial, &query.snapshot_id);
-    let contacts = state.storage.load_contacts(&snap.device_serial, &query.snapshot_id);
+    let sms = state.storage.load_sms(&query.snapshot_id);
+    let contacts = state.storage.load_contacts(&query.snapshot_id);
     let names = build_phone_name_map(&contacts);
 
     // 按 thread_id 聚合
@@ -350,11 +375,11 @@ pub fn get_sms_thread(
     page_size: usize,
     state: State<AppState>,
 ) -> Result<PageResult<Sms>, String> {
-    let snap = state
+    let _snap = state
         .storage
         .get_snapshot(&snapshot_id)
         .ok_or_else(|| "快照不存在".to_string())?;
-    let sms = state.storage.load_sms(&snap.device_serial, &snapshot_id);
+    let sms = state.storage.load_sms(&snapshot_id);
     let mut list: Vec<Sms> = sms
         .iter()
         .filter(|s| s.thread_id == thread_id)

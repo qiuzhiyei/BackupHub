@@ -82,6 +82,7 @@ export async function settingsView(): Promise<HTMLElement> {
   wrap.replaceChildren(
     pageHeader("设置"),
     statusBox,
+    renderBackupDir(),
     renderDiagnostic(),
     el("div", { class: "panel hint-panel" },
       el("h3", {}, "使用提示"),
@@ -97,6 +98,66 @@ export async function settingsView(): Promise<HTMLElement> {
 
   void loadStatus();
   return wrap;
+}
+
+function renderBackupDir(): HTMLElement {
+  const panel = el("div", { class: "panel" });
+  const input = el("input", { class: "input", type: "text", placeholder: "留空 = 默认(exe 同级 Back_File，不可写回退 AppData)" }) as HTMLInputElement;
+  const resolved = el("div", { class: "hint-line" }, "加载中…");
+
+  async function load() {
+    try {
+      const info = await api.backupDirInfo();
+      input.value = info.configured;
+      resolved.textContent = "实际备份目录：" + info.resolved;
+    } catch (e) {
+      resolved.textContent = "加载失败: " + String(e);
+    }
+  }
+
+  panel.replaceChildren(
+    el("div", { class: "panel-head" }, el("h3", {}, "备份目录")),
+    el("div", { class: "form-row" },
+      el("label", { class: "form-label" }, "自定义路径（可选，留空用默认）"),
+      el("div", { class: "adb-row" },
+        input,
+        el("button", {
+          class: "btn btn-ghost",
+          onclick: async () => {
+            const sel = await open({ multiple: false, directory: true });
+            if (sel) input.value = typeof sel === "string" ? sel : sel[0];
+          },
+        }, "浏览…"),
+        el("button", {
+          class: "btn btn-primary",
+          onclick: async () => {
+            try {
+              const r = await api.setBackupDir(input.value.trim());
+              toast("已保存，备份目录：" + r, "success");
+              load();
+            } catch (e) {
+              toast("保存失败: " + String(e), "error");
+            }
+          },
+        }, "保存"),
+        el("button", {
+          class: "btn btn-ghost",
+          onclick: async () => {
+            try {
+              const info = await api.backupDirInfo();
+              void api.openFolder(info.resolved);
+            } catch (e) {
+              toast("打开失败: " + String(e), "error");
+            }
+          },
+        }, "打开目录"),
+      ),
+    ),
+    resolved,
+    el("div", { class: "hint-line" }, "所有备份统一存此目录下：<设备名>/<时间>/<COMM|PHOTO|VIDEO>/。照片视频不再选目录，直接落到此处的 PHOTO/VIDEO。"),
+  );
+  void load();
+  return panel;
 }
 
 function renderDiagnostic(): HTMLElement {

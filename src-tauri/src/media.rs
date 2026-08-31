@@ -85,20 +85,19 @@ fn scan_media_fs(app: &AppHandle, adb: &PathBuf, serial: &str, exts: &[&str], la
     Ok(folders)
 }
 
-/// 拉取选中的目录到本地：在 parent 下自动创建 BackupHub_<设备>_<时间>_<TAG> 目录，
-/// 各选中目录 adb pull 到其中，过程经 media://progress 推送
+/// 拉取选中的目录到 <备份根>/<设备>/<时间>/<TAG>，过程经 media://progress 推送
 pub fn pull_media_folders(
     app: &AppHandle,
     adb: &PathBuf,
     serial: &str,
     folders: &[String],
-    parent: &str,
+    backup_dir: &PathBuf,
     tag: &str,
 ) -> Result<(usize, String), String> {
     if folders.is_empty() {
         return Err("未选择任何目录".into());
     }
-    // 设备名 + 本地时间，命名与导出一致
+    // 设备名 + 本地时间，命名与备份内目录一致
     let get = |prop: &str| {
         adb::run_adb(adb, &["-s", serial, "shell", "getprop", prop])
             .map(|s| s.trim().to_string())
@@ -106,9 +105,9 @@ pub fn pull_media_folders(
     };
     let brand = get("ro.product.brand");
     let model = get("ro.product.model");
-    let label = device_label(&brand, &model, serial);
-    let now = chrono::Local::now().format("%Y-%m-%d_%H-%M").to_string();
-    let dest = PathBuf::from(parent).join(format!("BackupHub_{}_{}_{}", label, now, tag));
+    let label = crate::storage::device_label(&brand, &model, serial);
+    let now = crate::storage::fmt_folder_time(chrono::Local::now().timestamp_millis());
+    let dest = backup_dir.join(label).join(now).join(tag);
     std::fs::create_dir_all(&dest).map_err(|e| format!("无法创建目标目录: {}", e))?;
     let dest_str = dest.to_string_lossy().to_string();
 
@@ -175,27 +174,6 @@ pub fn pull_media_folders(
         },
     );
     Ok((ok, dest_str))
-}
-
-fn device_label(brand: &str, model: &str, serial: &str) -> String {
-    let b = safe(brand);
-    let m = safe(model);
-    let b_lower = b.to_lowercase();
-    let mut parts: Vec<String> = Vec::new();
-    if !b.is_empty() {
-        parts.push(b);
-    }
-    if !m.is_empty() && m.to_lowercase() != b_lower {
-        parts.push(m);
-    }
-    if parts.is_empty() {
-        parts.push(safe(serial));
-    }
-    parts.join("_")
-}
-
-fn safe(s: &str) -> String {
-    s.replace(['/', '\\', ':', '*', '?', '"', '<', '>', '|', ' '], "_")
 }
 
 fn basename(p: &str) -> String {
