@@ -41,6 +41,8 @@ export async function mediaView(kind: MediaKind): Promise<HTMLElement> {
   let backupRunning = false;
   // 完成态由 renderDonePanel 负责渲染，置 true 后忽略后续进度事件，防止覆盖完成面板
   let backupFinalized = false;
+  // 取消中：点击「取消备份」后置 true，停止重复触发，按钮变「取消中…」
+  let cancelling = false;
 
   function setProgressVisible(visible: boolean) {
     progressPanel.style.display = visible ? "" : "none";
@@ -155,6 +157,7 @@ export async function mediaView(kind: MediaKind): Promise<HTMLElement> {
       if (!files.length) { toast("请至少选择一个目录", "error"); return; }
       backupRunning = true;
       backupFinalized = false;
+      cancelling = false;
       pullBtn.disabled = true;
       pullBtn.textContent = "备份中…";
       scanBtn.disabled = true;
@@ -169,8 +172,14 @@ export async function mediaView(kind: MediaKind): Promise<HTMLElement> {
         backupFinalized = true;
         renderDonePanel(snap);
       } catch (e) {
-        renderProgress({ stage: "error", current: 0, total: 0, message: "拉取失败: " + String(e) });
-        toast("拉取失败: " + String(e), "error");
+        const msg = String(e);
+        if (msg.includes("已取消")) {
+          toast("已取消", "info");
+          renderProgress({ stage: "cancelled", current: 0, total: 0, message: "已取消" });
+        } else {
+          renderProgress({ stage: "error", current: 0, total: 0, message: "拉取失败: " + msg });
+          toast("拉取失败: " + msg, "error");
+        }
       } finally {
         if (unlisten) (await unlisten)();
         backupRunning = false;
@@ -189,17 +198,31 @@ export async function mediaView(kind: MediaKind): Promise<HTMLElement> {
     if (backupFinalized || p.stage === "done") return;
     const pct = p.total > 0 ? Math.round((p.current / p.total) * 100) : 0;
     const err = p.stage === "error";
+    const cancelled = p.stage === "cancelled";
+    const actions: HTMLElement[] = [];
+    if (!cancelled) {
+      const cancelBtn = el("button", { class: "btn btn-ghost btn-sm", disabled: cancelling }, cancelling ? "取消中…" : "取消备份");
+      cancelBtn.onclick = async () => {
+        if (cancelling) return;
+        cancelling = true;
+        cancelBtn.disabled = true;
+        cancelBtn.textContent = "取消中…";
+        try { await api.cancelBackup(); } catch { /* ignore */ }
+      };
+      actions.push(cancelBtn);
+    }
     progressPanel.replaceChildren(
-      el("div", { class: "panel-head" }, el("h3", {}, err ? "拉取出错" : "拉取进度")),
+      el("div", { class: "panel-head" }, el("h3", {}, cancelled ? "已取消" : err ? "拉取出错" : "拉取进度")),
       el("div", { class: "progress-stage" },
-        el("span", { class: `badge ${err ? "badge-err" : "badge-info"}` }, err ? "错误" : "进行中"),
+        el("span", { class: `badge ${cancelled ? "badge-warn" : err ? "badge-err" : "badge-info"}` }, cancelled ? "已取消" : err ? "错误" : "进行中"),
         el("div", { class: "progress-right" },
-          el("span", { class: "progress-pct" }, `${pct}%`),
+          el("span", { class: `progress-pct${cancelled ? " done" : ""}` }, `${cancelled ? 100 : pct}%`),
           el("span", { class: "progress-count" }, p.total > 0 ? `${p.current} / ${p.total} 个文件` : ""),
         ),
       ),
-      el("div", { class: "progress-bar" }, el("div", { class: "progress-fill", style: { width: `${pct}%` } })),
+      el("div", { class: "progress-bar" }, el("div", { class: `progress-fill${cancelled ? " done" : ""}`, style: { width: `${cancelled ? 100 : pct}%` } })),
       el("div", { class: "progress-msg" }, p.message),
+      el("div", { class: "progress-actions" }, ...actions),
     );
   }
 

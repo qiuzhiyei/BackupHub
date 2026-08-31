@@ -19,6 +19,8 @@ export async function backupView(p: { query: URLSearchParams }): Promise<HTMLEle
   let ready: DeviceStatus[] = [];
   let records: DeviceRecord[] = [];
   let selectedSerial = preSerial;
+  // 取消中：点击「取消备份」后置 true
+  let cancelling = false;
 
   const pickerPanel = wrap.querySelector("#picker-panel") as HTMLElement;
   const formPanel = wrap.querySelector("#form-panel") as HTMLElement;
@@ -122,6 +124,7 @@ export async function backupView(p: { query: URLSearchParams }): Promise<HTMLEle
       }
       const name = nameInput.value.trim();
       const note = noteInput.value.trim();
+      cancelling = false;
       startBtn.setAttribute("disabled", "true");
       startBtn.textContent = "备份进行中…";
 
@@ -132,8 +135,14 @@ export async function backupView(p: { query: URLSearchParams }): Promise<HTMLEle
       try {
         unlisten = await api.onBackupProgress((pp) => renderProgress(pp));
         const snap = await api.backupStart(selectedSerial, options, name, note);
-        await new Promise((r) => setTimeout(r, 600));
-        navigate(`#/snapshot/${encodeURIComponent(snap.id)}`);
+        if (snap.note && snap.note.includes("已取消")) {
+          toast("已取消", "info");
+          startBtn.removeAttribute("disabled");
+          startBtn.textContent = "开始备份";
+        } else {
+          await new Promise((r) => setTimeout(r, 600));
+          navigate(`#/snapshot/${encodeURIComponent(snap.id)}`);
+        }
       } catch (e) {
         toast("备份失败: " + String(e), "error");
         startBtn.removeAttribute("disabled");
@@ -165,22 +174,36 @@ export async function backupView(p: { query: URLSearchParams }): Promise<HTMLEle
   function renderProgress(pp: ProgressPayload) {
     const total = pp.total || 0;
     const pct = total > 0 ? Math.round((pp.current / total) * 100) : 0;
+    const cancelled = pp.stage === "done" && pp.message.includes("已取消");
     const stageLabel: Record<string, string> = {
       sms: "短信", calls: "通话记录", contacts: "通讯录",
-      saving: "写入", done: "完成", error: "错误", start: "初始化",
+      saving: "写入", done: cancelled ? "已取消" : "完成", error: "错误", start: "初始化",
     };
     const label = stageLabel[pp.stage] || pp.stage;
     const bar = el("div", { class: "progress-bar" },
-      el("div", { class: "progress-fill", style: { width: `${pct}%` } }),
+      el("div", { class: `progress-fill${cancelled ? " done" : ""}`, style: { width: `${cancelled ? 100 : pct}%` } }),
     );
+    const actions: HTMLElement[] = [];
+    if (pp.stage !== "done" && pp.stage !== "error") {
+      const cancelBtn = el("button", { class: "btn btn-ghost btn-sm", disabled: cancelling }, cancelling ? "取消中…" : "取消备份");
+      cancelBtn.onclick = async () => {
+        if (cancelling) return;
+        cancelling = true;
+        cancelBtn.disabled = true;
+        cancelBtn.textContent = "取消中…";
+        try { await api.cancelBackup(); } catch { /* ignore */ }
+      };
+      actions.push(cancelBtn);
+    }
     progressPanel.replaceChildren(
       el("div", { class: "panel-head" }, el("h3", {}, "备份进度")),
       el("div", { class: "progress-stage" },
-        el("span", { class: `badge ${pp.stage === "done" ? "badge-ok" : pp.stage === "error" ? "badge-err" : "badge-info"}` }, label),
+        el("span", { class: `badge ${cancelled ? "badge-warn" : pp.stage === "done" ? "badge-ok" : pp.stage === "error" ? "badge-err" : "badge-info"}` }, label),
         el("span", { class: "progress-count" }, total > 0 ? `${pp.current} / ${total}` : "扫描中…"),
       ),
       bar,
       el("div", { class: "progress-msg" }, pp.message),
+      el("div", { class: "progress-actions" }, ...actions),
     );
   }
 
