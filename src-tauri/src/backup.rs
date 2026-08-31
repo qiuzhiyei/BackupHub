@@ -95,6 +95,7 @@ pub fn perform_backup(
 
     let meta = BackupSnapshot {
         id: id.clone(),
+        kind: "COMM".into(),
         device_serial: serial.to_string(),
         device_model: model,
         device_manufacturer: manufacturer,

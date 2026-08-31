@@ -1,7 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
-import { openPath } from "@tauri-apps/plugin-opener";
 
 import type {
   AdbStatus,
@@ -16,7 +15,6 @@ import type {
   PageResult,
   PhotoFolder,
   ProgressPayload,
-  PullSummary,
   Sms,
   SmsThread,
 } from "./types";
@@ -47,6 +45,11 @@ export async function listSnapshots(serial?: string): Promise<BackupSnapshot[]> 
 
 export async function getSnapshot(id: string): Promise<BackupSnapshot | null> {
   return invoke<BackupSnapshot | null>("get_snapshot", { id });
+}
+
+/** 快照在本地磁盘的数据目录绝对路径，供「打开文件夹」（媒体快照使用） */
+export async function getSnapshotPath(id: string): Promise<string | null> {
+  return invoke<string | null>("get_snapshot_path", { id });
 }
 
 export async function backupStart(
@@ -138,16 +141,16 @@ export async function scanVideos(serial: string): Promise<PhotoFolder[]> {
 
 export async function pullPhotos(
   serial: string,
-  folders: string[],
-): Promise<PullSummary> {
-  return invoke<PullSummary>("pull_photos", { serial, folders });
+  files: string[],
+): Promise<BackupSnapshot> {
+  return invoke<BackupSnapshot>("pull_photos", { serial, files });
 }
 
 export async function pullVideos(
   serial: string,
-  folders: string[],
-): Promise<PullSummary> {
-  return invoke<PullSummary>("pull_videos", { serial, folders });
+  files: string[],
+): Promise<BackupSnapshot> {
+  return invoke<BackupSnapshot>("pull_videos", { serial, files });
 }
 
 export async function setBackupDir(path: string): Promise<string> {
@@ -163,5 +166,5 @@ export function onMediaProgress(cb: (p: ProgressPayload) => void): Promise<Unlis
 }
 
 export async function openFolder(path: string): Promise<void> {
-  await openPath(path);
+  await invoke("open_folder", { path });
 }

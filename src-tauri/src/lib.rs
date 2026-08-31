@@ -38,6 +38,8 @@ pub fn run() {
             commands::list_device_records,
             commands::list_snapshots,
             commands::get_snapshot,
+            commands::get_snapshot_path,
+            commands::open_folder,
             commands::backup_start,
             commands::delete_snapshot,
             commands::import_snapshot,

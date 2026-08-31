@@ -1,6 +1,7 @@
 import { el, esc, fmtDate, toast } from "../dom";
+import { navigate } from "../router";
 import * as api from "../api";
-import type { PhotoFolder, ProgressPayload } from "../types";
+import type { BackupSnapshot, PhotoFolder, ProgressPayload } from "../types";
 import { emptyState, pageHeader, deviceLabel } from "./components";
 
 export type MediaKind = "photos" | "videos";
@@ -35,6 +36,17 @@ export async function mediaView(kind: MediaKind): Promise<HTMLElement> {
   const folderWrap = el("div", { class: "photo-folders" }, emptyState(`先选择设备并扫描${word}`, `将按设备原目录分类列出${word}`));
   const footer = el("div", { class: "photo-footer" });
   const progressPanel = el("div", { class: "panel photo-progress", style: { display: "none" } });
+
+  // 备份重入保护：进行中禁止再次点击「开始备份」，避免并发拉取/弹多个完成窗
+  let backupRunning = false;
+  // 完成态由 renderDonePanel 负责渲染，置 true 后忽略后续进度事件，防止覆盖完成面板
+  let backupFinalized = false;
+
+  function setProgressVisible(visible: boolean) {
+    progressPanel.style.display = visible ? "" : "none";
+    // 进度面板 sticky 钉底时，footer 让位为 static，避免两个 sticky-bottom 叠在底部重叠
+    footer.style.position = visible ? "static" : "";
+  }
 
   async function refreshDevices() {
     try {
@@ -130,27 +142,40 @@ export async function mediaView(kind: MediaKind): Promise<HTMLElement> {
     const selSize = c.folders.filter((f) => c.selected.has(f.dir)).reduce((a, f) => a + f.total_size, 0);
     const pullBtn = el("button", {
       class: "btn btn-primary",
-      disabled: selCount === 0,
-    }, "开始备份");
+      disabled: selCount === 0 || backupRunning,
+    }, backupRunning ? "备份中…" : "开始备份");
     pullBtn.onclick = async () => {
+      if (backupRunning) return;
       const serial = deviceSelect.value;
       if (!serial) { toast("请先选择设备", "error"); return; }
-      if (!c.selected.size) { toast(`请至少选择一个目录`, "error"); return; }
-      progressPanel.style.display = "";
-      renderProgress({ stage: "start", current: 0, total: c.selected.size, message: "准备拉取…" });
+      // 只拉扫描到的媒体文件（按扩展名过滤，不拉整个目录，避免 .bin 等无关文件）
+      const files = c.folders
+        .filter((f) => c.selected.has(f.dir))
+        .flatMap((f) => f.files.map((x) => x.path));
+      if (!files.length) { toast("请至少选择一个目录", "error"); return; }
+      backupRunning = true;
+      backupFinalized = false;
+      pullBtn.disabled = true;
+      pullBtn.textContent = "备份中…";
+      scanBtn.disabled = true;
+      setProgressVisible(true);
+      renderProgress({ stage: "start", current: 0, total: files.length, message: "准备拉取…" });
       let unlisten: Awaited<ReturnType<typeof api.onMediaProgress>> | null = null;
       try {
         unlisten = await api.onMediaProgress((p) => renderProgress(p));
-        const res = kind === "photos"
-          ? await api.pullPhotos(serial, [...c.selected])
-          : await api.pullVideos(serial, [...c.selected]);
-        progressPanel.appendChild(
-          el("button", { class: "btn btn-ghost btn-sm", onclick: () => void api.openFolder(res.dest) }, "打开文件夹"),
-        );
+        const snap = kind === "photos"
+          ? await api.pullPhotos(serial, files)
+          : await api.pullVideos(serial, files);
+        backupFinalized = true;
+        renderDonePanel(snap);
       } catch (e) {
+        renderProgress({ stage: "error", current: 0, total: 0, message: "拉取失败: " + String(e) });
         toast("拉取失败: " + String(e), "error");
       } finally {
         if (unlisten) (await unlisten)();
+        backupRunning = false;
+        scanBtn.disabled = false;
+        renderFooter();
       }
     };
     footer.replaceChildren(
@@ -160,22 +185,55 @@ export async function mediaView(kind: MediaKind): Promise<HTMLElement> {
   }
 
   function renderProgress(p: ProgressPayload) {
+    // 完成态由 renderDonePanel 负责渲染；进行中事件到达即刷新，防止覆盖完成面板
+    if (backupFinalized || p.stage === "done") return;
     const pct = p.total > 0 ? Math.round((p.current / p.total) * 100) : 0;
-    const done = p.stage === "done";
+    const err = p.stage === "error";
     progressPanel.replaceChildren(
-      el("div", { class: "panel-head" }, el("h3", {}, done ? "拉取完成" : "拉取进度")),
+      el("div", { class: "panel-head" }, el("h3", {}, err ? "拉取出错" : "拉取进度")),
       el("div", { class: "progress-stage" },
-        el("span", { class: `badge ${done ? "badge-ok" : p.stage === "error" ? "badge-err" : "badge-info"}` }, done ? "完成" : p.stage === "error" ? "错误" : "进行中"),
-        el("span", { class: "progress-count" }, p.total > 0 ? `${p.current}/${p.total}` : ""),
+        el("span", { class: `badge ${err ? "badge-err" : "badge-info"}` }, err ? "错误" : "进行中"),
+        el("div", { class: "progress-right" },
+          el("span", { class: "progress-pct" }, `${pct}%`),
+          el("span", { class: "progress-count" }, p.total > 0 ? `${p.current} / ${p.total} 个文件` : ""),
+        ),
       ),
       el("div", { class: "progress-bar" }, el("div", { class: "progress-fill", style: { width: `${pct}%` } })),
       el("div", { class: "progress-msg" }, p.message),
     );
   }
 
+  function renderDonePanel(snap: BackupSnapshot) {
+    progressPanel.replaceChildren(
+      el("div", { class: "panel-head" }, el("h3", {}, "拉取完成")),
+      el("div", { class: "progress-stage" },
+        el("span", { class: "badge badge-ok" }, "完成"),
+        el("div", { class: "progress-right" },
+          el("span", { class: "progress-pct done" }, "100%"),
+        ),
+      ),
+      el("div", { class: "progress-bar" }, el("div", { class: "progress-fill done", style: { width: "100%" } })),
+      el("div", { class: "progress-msg" }, snap.note || "备份完成"),
+      el("div", { class: "progress-actions" },
+        el("button", { class: "btn btn-primary btn-sm", onclick: async () => {
+          try {
+            const p = await api.getSnapshotPath(snap.id);
+            if (p) await api.openFolder(p);
+            else toast("未找到备份目录", "error");
+          } catch (e) {
+            toast("打开文件夹失败: " + String(e), "error");
+          }
+        } }, "打开文件夹"),
+        el("button", { class: "btn btn-ghost btn-sm", onclick: () => navigate(`#/snapshot/${encodeURIComponent(snap.id)}`) }, "查看记录"),
+      ),
+    );
+  }
+
   scanBtn.onclick = async () => {
+    if (backupRunning) { toast("备份进行中，请稍候", "error"); return; }
     const serial = deviceSelect.value;
     if (!serial) { toast("请先选择设备", "error"); return; }
+    setProgressVisible(false);
     scanBtn.disabled = true;
     scanBtn.textContent = `扫描${word}中…`;
     folderWrap.replaceChildren(el("div", { class: "loading-row" }, `扫描设备${word}…`));
@@ -199,6 +257,7 @@ export async function mediaView(kind: MediaKind): Promise<HTMLElement> {
       c.folders = [];
       c.selected.clear();
       c.scannedSerial = "";
+      setProgressVisible(false);
       folderWrap.replaceChildren(emptyState(`先选择设备并扫描${word}`, `将按设备原目录分类列出${word}`));
       footer.replaceChildren();
     }
@@ -213,7 +272,7 @@ export async function mediaView(kind: MediaKind): Promise<HTMLElement> {
         scanBtn,
         el("button", { class: "btn btn-ghost btn-sm", onclick: () => void refreshDevices() }, "刷新"),
       ),
-      el("div", { class: "hint-line" }, `扫描后按设备原目录分类列出${word}，默认全选（=全部备份），可取消个别目录。点「开始备份」直接备份到「备份目录」下的 <设备>/<时间>/${kind === "photos" ? "PHOTO" : "VIDEO"} 子目录（备份目录可在设置中改）。`),
+      el("div", { class: "hint-line" }, `扫描后按设备原目录分类列出${word}，默认全选（=全部备份），可取消个别目录。点「开始备份」只拉取扫描到的${word}文件（不拉整个目录，避免 .bin 等无关文件），按原目录结构存入「备份目录」下的 <设备>/<时间>/${kind === "photos" ? "PHOTO" : "VIDEO"} 子目录，并生成备份记录（仪表盘/查看数据/设备页可见）。备份目录可在设置中改。`),
     ),
     folderWrap,
     footer,

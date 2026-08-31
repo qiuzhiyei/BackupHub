@@ -68,6 +68,10 @@ pub struct Contact {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BackupSnapshot {
     pub id: String,
+    /// 备份类型："COMM"（短信/通话/通讯录） | "PHOTO"（照片） | "VIDEO"（视频）
+    /// 旧 index.json 无此字段时按 "COMM" 反序列化，保证向后兼容
+    #[serde(default = "default_kind")]
+    pub kind: String,
     pub device_serial: String,
     pub device_model: String,
     pub device_manufacturer: String,
@@ -79,6 +83,11 @@ pub struct BackupSnapshot {
     pub sms_count: usize,
     pub call_count: usize,
     pub contact_count: usize,
+}
+
+/// BackupSnapshot.kind 的反序列化默认值：旧索引无 kind 字段时视为 COMM 备份
+fn default_kind() -> String {
+    "COMM".into()
 }
 
 /// 备份过程中前端需要选择的数据类型
@@ -161,10 +170,4 @@ pub struct PhotoFolder {
     pub count: usize,
     pub total_size: i64,
     pub files: Vec<PhotoFile>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PullSummary {
-    pub folders: usize,
-    pub dest: String,
 }

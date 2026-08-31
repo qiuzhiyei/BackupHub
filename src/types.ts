@@ -40,6 +40,8 @@ export interface BackupOptions {
 
 export interface BackupSnapshot {
   id: string;
+  /** "COMM" | "PHOTO" | "VIDEO" */
+  kind: string;
   device_serial: string;
   device_model: string;
   device_manufacturer: string;
@@ -131,9 +133,4 @@ export interface PhotoFolder {
   count: number;
   total_size: number;
   files: PhotoFile[];
-}
-
-export interface PullSummary {
-  folders: number;
-  dest: string;
 }

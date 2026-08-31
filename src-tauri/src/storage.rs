@@ -138,11 +138,13 @@ impl Storage {
         calls: &[CallLog],
         contacts: &[Contact],
     ) -> Result<BackupSnapshot, String> {
+        // 短信/通话/通讯录备份固定为 COMM 类型
+        meta.kind = "COMM".into();
         meta.sms_count = sms.len();
         meta.call_count = calls.len();
         meta.contact_count = contacts.len();
 
-        let dir = self.snapshot_dir(&meta, "COMM");
+        let dir = self.snapshot_dir(&meta, &meta.kind);
         fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
         write_json(&dir.join("meta.json"), &meta)?;
         write_json(&dir.join("sms.json"), sms)?;
@@ -169,13 +171,56 @@ impl Storage {
         Ok(meta)
     }
 
+    /// 保存媒体备份快照（PHOTO/VIDEO）：媒体文件已由调用方拉取到
+    /// `<备份根>/<设备>/<时间>/<kind>` 目录，此处仅写 meta.json 并登记到
+    /// index.json / devices.json，使仪表盘/查看数据/设备页可见。
+    /// file_count 仅用于调用方备注，不落库到结构字段。
+    pub fn save_media_snapshot(
+        &self,
+        mut meta: BackupSnapshot,
+        _file_count: usize,
+    ) -> Result<BackupSnapshot, String> {
+        meta.sms_count = 0;
+        meta.call_count = 0;
+        meta.contact_count = 0;
+
+        let dir = self.snapshot_dir(&meta, &meta.kind);
+        fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+        write_json(&dir.join("meta.json"), &meta)?;
+
+        let mut list = self.load_snapshots();
+        list.retain(|s| s.id != meta.id);
+        list.push(meta.clone());
+        self.save_snapshots(&list)?;
+
+        let rec = DeviceRecord {
+            serial: meta.device_serial.clone(),
+            model: meta.device_model.clone(),
+            manufacturer: meta.device_manufacturer.clone(),
+            brand: meta.device_brand.clone(),
+            custom_name: meta.custom_name.clone(),
+            first_seen: meta.created_at,
+            last_backup: meta.created_at,
+            backup_count: self.list_snapshots(Some(&meta.device_serial)).len() as u64,
+        };
+        self.upsert_device(rec)?;
+
+        Ok(meta)
+    }
+
+    /// 快照在本地磁盘的数据目录绝对路径，供前端「打开文件夹」
+    pub fn snapshot_path(&self, id: &str) -> Option<String> {
+        let meta = self.get_snapshot(id)?;
+        Some(self.snapshot_dir(&meta, &meta.kind).to_string_lossy().to_string())
+    }
+
     pub fn delete_snapshot(&self, id: &str) -> Result<(), String> {
         let mut list = self.load_snapshots();
         let pos = list.iter().position(|s| s.id == id);
         if let Some(i) = pos {
             let snp = list.remove(i);
             self.save_snapshots(&list)?;
-            let dir = self.snapshot_dir(&snp, "COMM");
+            let dir = self.snapshot_dir(&snp, &snp.kind);
             if dir.exists() {
                 fs::remove_dir_all(&dir).map_err(|e| e.to_string())?;
             }
@@ -199,7 +244,7 @@ impl Storage {
         let mut list = self.load_snapshots();
         let idx = list.iter().position(|s| s.id == id).ok_or_else(|| "快照不存在".to_string())?;
         list[idx].note = note.to_string();
-        let dir = self.snapshot_dir(&list[idx], "COMM");
+        let dir = self.snapshot_dir(&list[idx], &list[idx].kind);
         write_json(&dir.join("meta.json"), &list[idx])?;
         self.save_snapshots(&list)
     }
@@ -208,7 +253,7 @@ impl Storage {
         let mut list = self.load_snapshots();
         let idx = list.iter().position(|s| s.id == id).ok_or_else(|| "快照不存在".to_string())?;
         list[idx].custom_name = name.to_string();
-        let dir = self.snapshot_dir(&list[idx], "COMM");
+        let dir = self.snapshot_dir(&list[idx], &list[idx].kind);
         write_json(&dir.join("meta.json"), &list[idx])?;
         let serial = list[idx].device_serial.clone();
         let res = self.save_snapshots(&list)?;

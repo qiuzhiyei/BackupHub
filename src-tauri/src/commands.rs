@@ -7,7 +7,7 @@ use crate::adb;
 use crate::backup;
 use crate::models::{
     BackupOptions, BackupSnapshot, Contact, DeviceRecord, DeviceStatus, PageQuery, PageResult,
-    PhotoFolder, PullSummary, Sms, SmsThread,
+    PhotoFolder, Sms, SmsThread,
 };
 use crate::storage::Storage;
 
@@ -115,42 +115,79 @@ pub async fn scan_videos(
         .map_err(|e| format!("任务异常: {}", e))?
 }
 
-/// 拉取选中的相册目录到 <备份根>/<设备>/<时间>/PHOTO
+/// 拉取选中的照片文件到 <备份根>/<设备>/<时间>/PHOTO，并写入快照索引
 #[tauri::command]
 pub async fn pull_photos(
     app: AppHandle,
     state: State<'_, AppState>,
     serial: String,
-    folders: Vec<String>,
-) -> Result<PullSummary, String> {
+    files: Vec<String>,
+) -> Result<BackupSnapshot, String> {
     let adb = resolve_adb(&state)?;
-    let backup_dir = state.storage.backup_dir();
-    let res = tauri::async_runtime::spawn_blocking(move || {
-        crate::media::pull_media_folders(&app, &adb, &serial, &folders, &backup_dir, "PHOTO")
+    let storage = state.storage.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::media::pull_media_files(&app, &storage, &adb, &serial, &files, "PHOTO", "")
     })
     .await
-    .map_err(|e| format!("任务异常: {}", e))??;
-    let (folders, dest) = res;
-    Ok(PullSummary { folders, dest })
+    .map_err(|e| format!("任务异常: {}", e))?
 }
 
-/// 拉取选中的视频目录到 <备份根>/<设备>/<时间>/VIDEO
+/// 拉取选中的视频文件到 <备份根>/<设备>/<时间>/VIDEO，并写入快照索引
 #[tauri::command]
 pub async fn pull_videos(
     app: AppHandle,
     state: State<'_, AppState>,
     serial: String,
-    folders: Vec<String>,
-) -> Result<PullSummary, String> {
+    files: Vec<String>,
+) -> Result<BackupSnapshot, String> {
     let adb = resolve_adb(&state)?;
-    let backup_dir = state.storage.backup_dir();
-    let res = tauri::async_runtime::spawn_blocking(move || {
-        crate::media::pull_media_folders(&app, &adb, &serial, &folders, &backup_dir, "VIDEO")
+    let storage = state.storage.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::media::pull_media_files(&app, &storage, &adb, &serial, &files, "VIDEO", "")
     })
     .await
-    .map_err(|e| format!("任务异常: {}", e))??;
-    let (folders, dest) = res;
-    Ok(PullSummary { folders, dest })
+    .map_err(|e| format!("任务异常: {}", e))?
+}
+
+/// 快照在本地磁盘的数据目录绝对路径，供前端「打开文件夹」（媒体快照使用）
+#[tauri::command]
+pub fn get_snapshot_path(id: String, state: State<AppState>) -> Result<Option<String>, String> {
+    Ok(state.storage.snapshot_path(&id))
+}
+
+/// 用系统资源管理器打开本地文件夹。
+/// 不走 opener 插件（其 openPath 有路径 scope 校验，默认拒绝任意绝对路径，会报
+/// "Not allowed to open path"）；备份目录是我们自己建的，直接 shell 调用最稳。
+#[tauri::command]
+pub fn open_folder(path: String) -> Result<(), String> {
+    open_folder_os(&path)
+}
+
+#[cfg(target_os = "windows")]
+fn open_folder_os(path: &str) -> Result<(), String> {
+    std::process::Command::new("explorer.exe")
+        .arg(path)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("无法打开文件夹: {}", e))
+}
+
+#[cfg(target_os = "macos")]
+fn open_folder_os(path: &str) -> Result<(), String> {
+    std::process::Command::new("open")
+        .arg(path)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("无法打开文件夹: {}", e))
+}
+
+#[cfg(target_os = "linux")]
+fn open_folder_os(path: &str) -> Result<(), String> {
+    std::process::Command::new("xdg-open")
+        .arg(path)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("无法打开文件夹: {}", e))
 }
 
 /// 设置备份根目录（空=用默认）
