@@ -239,7 +239,7 @@ pub fn list_devices(adb: &PathBuf) -> Result<Vec<DeviceStatus>, String> {
 }
 
 /// 执行 adb 命令，返回 (stdout, stderr, 是否成功)
-fn run_adb_raw(adb: &PathBuf, args: &[&str]) -> Result<(String, String, bool), String> {
+pub fn run_adb_raw(adb: &PathBuf, args: &[&str]) -> Result<(String, String, bool), String> {
     let mut cmd = Command::new(adb);
     for a in args {
         cmd.arg(a);

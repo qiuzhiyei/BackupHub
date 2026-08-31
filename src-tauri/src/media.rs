@@ -35,7 +35,9 @@ fn scan_media_fs(app: &AppHandle, adb: &PathBuf, serial: &str, exts: &[&str], la
         "find /storage/emulated/0 -type f \\( {} \\) -exec stat -c '%n|%s|%Y' {{}} + 2>/dev/null",
         ext_part
     );
-    let out = adb::run_adb(adb, &["-s", serial, "shell", &cmd])?;
+    // find 遍历时遇到无权限目录会非零退出，但仍会输出可访问的文件；
+    // 故用 run_adb_raw 不管退出码都取 stdout，避免误判为扫描失败
+    let (out, _stderr, _ok) = adb::run_adb_raw(adb, &["-s", serial, "shell", &cmd])?;
 
     let mut groups: HashMap<String, Vec<PhotoFile>> = HashMap::new();
     for line in out.lines() {
