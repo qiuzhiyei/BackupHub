@@ -1645,6 +1645,9 @@ body {
   font-size: 17px;
   font-weight: 700;
 }
+.modal-title.err {
+  color: var(--err);
+}
 .modal-body {
   font-size: 14px;
   color: var(--text-muted);

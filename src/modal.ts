@@ -114,3 +114,27 @@ export function chooseDialog(
     obs.observe(mount(), { childList: true });
   });
 }
+
+/** 单按钮通知弹窗（完成/出错时用，需要用户点确定关闭） */
+export function notifyDialog(message: string, title = "提示", isError = false): Promise<void> {
+  return new Promise((resolve) => {
+    const content = el("div", {},
+      el("div", { class: `modal-title${isError ? " err" : ""}` }, title),
+      el("div", { class: "modal-body" }, message),
+      el("div", { class: "modal-actions" },
+        el("button", {
+          class: isError ? "btn btn-danger-ghost" : "btn btn-primary",
+          onclick: () => backdrop.remove(),
+        }, "确定"),
+      ),
+    );
+    const backdrop = overlay(content);
+    const obs = new MutationObserver(() => {
+      if (!document.body.contains(backdrop)) {
+        obs.disconnect();
+        resolve();
+      }
+    });
+    obs.observe(mount(), { childList: true });
+  });
+}
