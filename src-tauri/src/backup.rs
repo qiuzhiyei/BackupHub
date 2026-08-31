@@ -39,6 +39,8 @@ pub fn perform_backup(
     let mut sms_list: Vec<Sms> = Vec::new();
     let mut call_list: Vec<CallLog> = Vec::new();
     let mut contact_list: Vec<Contact> = Vec::new();
+    // 通话记录因系统限制被跳过时，在最终完成摘要里附注说明
+    let mut call_skip_note = String::new();
 
     if options.sms {
         emit(app, ProgressPayload {
@@ -64,9 +66,16 @@ pub fn perform_backup(
         match collect_calls(adb_path, serial, app) {
             Ok(v) => call_list = v,
             Err(e) => {
+                // 通话记录受系统限制（adb shell 无 READ_CALL_LOG）时，给出友好提示而非裸堆栈
+                let msg = if is_permission_denial(&e) {
+                    call_skip_note = "（通话记录因系统限制跳过）".to_string();
+                    "通话记录：本机系统限制 adb 读取（需 READ_CALL_LOG 权限），已跳过；短信/通讯录不受影响".to_string()
+                } else {
+                    format!("通话记录读取失败: {}", e)
+                };
                 emit(app, ProgressPayload {
                     stage: "error".into(), current: 0, total: 0,
-                    message: format!("通话记录读取失败: {}", e),
+                    message: msg,
                 });
             }
         }
@@ -115,8 +124,8 @@ pub fn perform_backup(
         current: saved.sms_count + saved.call_count + saved.contact_count,
         total: saved.sms_count + saved.call_count + saved.contact_count,
         message: format!(
-            "完成: 短信 {} 条, 通话 {} 条, 联系人 {} 个",
-            saved.sms_count, saved.call_count, saved.contact_count
+            "完成: 短信 {} 条, 通话 {} 条, 联系人 {} 个{}",
+            saved.sms_count, saved.call_count, saved.contact_count, call_skip_note
         ),
     });
 
@@ -213,14 +222,21 @@ fn collect_sms(adb: &PathBuf, serial: &str, app: &AppHandle) -> Result<Vec<Sms>,
 }
 
 fn collect_calls(adb: &PathBuf, serial: &str, app: &AppHandle) -> Result<Vec<CallLog>, String> {
-    let rows = adb::query_provider(
-        adb,
-        serial,
-        "content://call_log/calls",
-        &["number", "duration", "date", "type", "name"],
-        None,
-        None,
-    )?;
+    let uri = "content://call_log/calls";
+    let projection = &["number", "duration", "date", "type", "name"];
+    // Android 9+ 上 adb shell（uid 2000）默认无 READ_CALL_LOG，content query 会被 SecurityException 拒绝。
+    // 尽力而为：尝试给 com.android.shell 授予该权限后重试一次（多数 ROM 会拒绝此 grant，少数可用）。
+    let rows = match adb::query_provider(adb, serial, uri, projection, None, None) {
+        Ok(r) => r,
+        Err(e) if is_permission_denial(&e) => {
+            let _ = adb::run_adb(
+                adb,
+                &["-s", serial, "shell", "pm", "grant", "com.android.shell", "android.permission.READ_CALL_LOG"],
+            );
+            adb::query_provider(adb, serial, uri, projection, None, None)?
+        }
+        Err(e) => return Err(e),
+    };
     let total = rows.len();
     let mut result = Vec::with_capacity(total);
     for (i, row) in rows.iter().enumerate() {
@@ -244,6 +260,14 @@ fn collect_calls(adb: &PathBuf, serial: &str, app: &AppHandle) -> Result<Vec<Cal
     // 按时间倒序
     result.sort_by(|a, b| b.date.cmp(&a.date));
     Ok(result)
+}
+
+/// 判断 content provider 错误是否为权限拒绝（SecurityException / Permission Denial / READ/WRITE_CALL_LOG）
+fn is_permission_denial(err: &str) -> bool {
+    err.contains("Permission Denial")
+        || err.contains("SecurityException")
+        || err.contains("READ_CALL_LOG")
+        || err.contains("WRITE_CALL_LOG")
 }
 
 fn collect_contacts(adb: &PathBuf, serial: &str, app: &AppHandle) -> Result<Vec<Contact>, String> {
