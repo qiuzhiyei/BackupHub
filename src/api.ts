@@ -165,6 +165,11 @@ export function onMediaProgress(cb: (p: ProgressPayload) => void): Promise<Unlis
   return listen<ProgressPayload>("media://progress", (e) => cb(e.payload));
 }
 
+/** 取消正在进行的备份（短信/通话/通讯录 或 照片/视频拉取） */
+export async function cancelBackup(): Promise<void> {
+  await invoke("cancel_backup");
+}
+
 export async function openFolder(path: string): Promise<void> {
   await invoke("open_folder", { path });
 }
