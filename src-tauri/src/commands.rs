@@ -263,6 +263,7 @@ pub fn update_snapshot_custom_name(
     state.storage.update_snapshot_custom_name(&id, &name)
 }
 
+#[allow(dead_code)]
 #[tauri::command]
 pub fn query_sms(query: PageQuery, state: State<AppState>) -> Result<PageResult<crate::models::Sms>, String> {
     let _snap = state
@@ -423,6 +424,7 @@ fn truncate_str(s: &str, max: usize) -> String {
     out
 }
 
+#[allow(dead_code)]
 fn apply_sms_filter(list: &mut Vec<crate::models::Sms>, q: &PageQuery) {
     if q.date_from.is_some() || q.date_to.is_some() || !q.search.is_empty() {
         list.retain(|s| {

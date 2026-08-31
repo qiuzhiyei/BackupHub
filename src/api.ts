@@ -112,7 +112,7 @@ export async function queryContacts(query: PageQuery): Promise<PageResult<Contac
   return invoke<PageResult<Contact>>("query_contacts", { query });
 }
 
-export async function pickExportDir(): Promise<string | null> {
+export async function pickFolder(): Promise<string | null> {
   const sel = await open({ directory: true, multiple: false });
   if (!sel) return null;
   return typeof sel === "string" ? sel : sel[0];

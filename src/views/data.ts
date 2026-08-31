@@ -79,7 +79,7 @@ export async function dataView(): Promise<HTMLElement> {
 
   const importBtn = el("button", { class: "btn btn-primary" }, "⬆ 导入备份");
   importBtn.onclick = async () => {
-    const dir = await api.pickExportDir();
+      const dir = await api.pickFolder();
     if (!dir) return;
     try {
       const snap = await api.importSnapshot(dir);
