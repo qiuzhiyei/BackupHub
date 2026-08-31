@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use tauri::{AppHandle, Emitter};
 
@@ -132,6 +133,7 @@ pub fn pull_media_files(
     files: &[String],
     tag: &str,
     custom_name: &str,
+    cancel: &AtomicBool,
 ) -> Result<BackupSnapshot, String> {
     if files.is_empty() {
         return Err("未选择任何文件".into());
@@ -149,11 +151,25 @@ pub fn pull_media_files(
 
     let total = files.len();
     let labels = storage.load_app_labels();
-    let (ok, _total) = pull_files_grouped(app, adb, serial, files, &dest, tag, total, &labels)?;
+    let (ok, _total, cancelled) = pull_files_grouped(app, adb, serial, files, &dest, tag, total, &labels, cancel)?;
 
-    // 自动备注：照片/视频备份（N 个）
+    // 取消且一个文件都没拉成 → 不留空快照，直接返回
+    if cancelled && ok == 0 {
+        let _ = app.emit(
+            "media://progress",
+            ProgressPayload {
+                stage: "done".into(),
+                current: 0,
+                total,
+                message: "已取消（未拉取任何文件）".into(),
+            },
+        );
+        return Err("已取消".into());
+    }
+
+    // 自动备注：照片/视频备份（N 个[，已取消]）
     let word = if tag == "VIDEO" { "视频" } else { "照片" };
-    let note = format!("{}备份（{} 个）", word, ok);
+    let note = format!("{}备份（{} 个{}）", word, ok, if cancelled { "，已取消" } else { "" });
 
     let meta = BackupSnapshot {
         id,
@@ -177,14 +193,18 @@ pub fn pull_media_files(
             stage: "done".into(),
             current: ok,
             total,
-            message: format!("完成：成功拉取 {}/{} 个文件到 {}", ok, total, dest_str),
+            message: if cancelled {
+                format!("已取消：成功拉取 {}/{} 个文件到 {}", ok, total, dest_str)
+            } else {
+                format!("完成：成功拉取 {}/{} 个文件到 {}", ok, total, dest_str)
+            },
         },
     );
     Ok(saved)
 }
 
 /// 按文件父目录分组批量 adb pull，保留原目录结构。
-/// 返回 (成功文件数, 总文件数)。进度经 media://progress 推送。
+/// 返回 (成功文件数, 总文件数, 是否取消)。进度经 media://progress 推送。
 fn pull_files_grouped(
     app: &AppHandle,
     adb: &PathBuf,
@@ -194,7 +214,8 @@ fn pull_files_grouped(
     tag: &str,
     total: usize,
     labels: &HashMap<String, String>,
-) -> Result<(usize, usize), String> {
+    cancel: &AtomicBool,
+) -> Result<(usize, usize, bool), String> {
     let stage = if tag == "VIDEO" { "video" } else { "photo" };
 
     // 按父目录分组
@@ -209,6 +230,10 @@ fn pull_files_grouped(
     let mut done_before = 0usize;
 
     for (parent_dir, group_files) in &group_list {
+        // 取消：不再开始新批次的拉取
+        if cancel.load(Ordering::Relaxed) {
+            return Ok((ok, total, true));
+        }
         let base = basename(parent_dir);
         // 本地子目录：应用私有目录用应用名替换前缀（Android/data|media|obb/<pkg> → <应用名>），
         // 其余保留设备原相对结构，便于按应用归类查找
@@ -251,7 +276,7 @@ fn pull_files_grouped(
         let glen2 = group_len;
         let total2 = total;
         let mut last_pct: Option<u32> = None;
-        let batch = adb::run_adb_pull_streaming(adb, &arg_refs, |pct, _line| {
+        let batch = adb::run_adb_pull_streaming(adb, &arg_refs, cancel, |pct, _line| {
             if let Some(p) = pct {
                 if last_pct == Some(p) {
                     return;
@@ -274,11 +299,18 @@ fn pull_files_grouped(
         match batch {
             Ok(_) => ok += group_len,
             Err(_) => {
+                // 取消致批次中断（adb 子进程已被 kill）→ 直接结束
+                if cancel.load(Ordering::Relaxed) {
+                    return Ok((ok, total, true));
+                }
                 // 批次失败（常因单文件无权限致整批非零退出）→ 逐文件回退，尽量抢救可拉取的文件
                 for (gi, f) in group_files.iter().enumerate() {
+                    if cancel.load(Ordering::Relaxed) {
+                        return Ok((ok, total, true));
+                    }
                     let f_args: Vec<&str> = vec!["-s", serial, "pull", f, &local_str];
                     let f_base = basename(f);
-                    let res = adb::run_adb_pull_streaming(adb, &f_args, |pct, _line| {
+                    let res = adb::run_adb_pull_streaming(adb, &f_args, cancel, |pct, _line| {
                         if let Some(p) = pct {
                             let cur = done2 + gi + (p as usize).min(1);
                             let _ = app2.emit(
@@ -313,7 +345,7 @@ fn pull_files_grouped(
         done_before += group_len;
     }
 
-    Ok((ok, total))
+    Ok((ok, total, false))
 }
 
 /// 设备路径相对扫描根 `/storage/emulated/0` 的相对路径，用于本地镜像保留原目录结构。

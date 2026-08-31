@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 use tauri::{AppHandle, State};
 
@@ -13,6 +15,8 @@ use crate::storage::Storage;
 
 pub struct AppState {
     pub storage: Storage,
+    /// 备份取消标志：cancel_backup 命令置 true，运行中的备份循环检查后中止
+    pub cancel: Arc<AtomicBool>,
 }
 
 fn resolve_adb(state: &State<AppState>) -> Result<PathBuf, String> {
@@ -24,6 +28,13 @@ fn resolve_adb(state: &State<AppState>) -> Result<PathBuf, String> {
     };
     adb::resolve_adb_path(cfg_path)
         .ok_or_else(|| "未找到 adb，请在设置中配置 platform-tools 路径".to_string())
+}
+
+/// 取消正在进行的备份（短信/通话/通讯录 或 照片/视频拉取）
+#[tauri::command]
+pub fn cancel_backup(state: State<AppState>) -> Result<(), String> {
+    state.cancel.store(true, Ordering::Relaxed);
+    Ok(())
 }
 
 #[tauri::command]
@@ -127,8 +138,10 @@ pub async fn pull_photos(
 ) -> Result<BackupSnapshot, String> {
     let adb = resolve_adb(&state)?;
     let storage = state.storage.clone();
+    let cancel = state.cancel.clone();
+    cancel.store(false, Ordering::Relaxed);
     tauri::async_runtime::spawn_blocking(move || {
-        crate::media::pull_media_files(&app, &storage, &adb, &serial, &files, "PHOTO", "")
+        crate::media::pull_media_files(&app, &storage, &adb, &serial, &files, "PHOTO", "", &cancel)
     })
     .await
     .map_err(|e| format!("任务异常: {}", e))?
@@ -144,8 +157,10 @@ pub async fn pull_videos(
 ) -> Result<BackupSnapshot, String> {
     let adb = resolve_adb(&state)?;
     let storage = state.storage.clone();
+    let cancel = state.cancel.clone();
+    cancel.store(false, Ordering::Relaxed);
     tauri::async_runtime::spawn_blocking(move || {
-        crate::media::pull_media_files(&app, &storage, &adb, &serial, &files, "VIDEO", "")
+        crate::media::pull_media_files(&app, &storage, &adb, &serial, &files, "VIDEO", "", &cancel)
     })
     .await
     .map_err(|e| format!("任务异常: {}", e))?
@@ -255,9 +270,11 @@ pub async fn backup_start(
 ) -> Result<BackupSnapshot, String> {
     let adb = resolve_adb(&state)?;
     let storage = state.storage.clone();
+    let cancel = state.cancel.clone();
+    cancel.store(false, Ordering::Relaxed);
     let res: Result<BackupSnapshot, String> =
         tauri::async_runtime::spawn_blocking(move || {
-            backup::perform_backup(&app, &storage, &adb, &serial, &options, &custom_name, &note)
+            backup::perform_backup(&app, &storage, &adb, &serial, &options, &custom_name, &note, &cancel)
         })
         .await
         .map_err(|e| format!("备份任务异常: {}", e))?;

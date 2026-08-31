@@ -9,6 +9,8 @@ use tauri::Manager;
 
 use commands::AppState;
 use storage::Storage;
+use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -21,7 +23,10 @@ pub fn run() {
                 .app_data_dir()
                 .expect("无法获取应用数据目录");
             let storage = Storage::new(&data_dir);
-            app.manage(AppState { storage });
+            app.manage(AppState {
+                storage,
+                cancel: Arc::new(AtomicBool::new(false)),
+            });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -33,6 +38,7 @@ pub fn run() {
             commands::pull_photos,
             commands::scan_videos,
             commands::pull_videos,
+            commands::cancel_backup,
             commands::set_backup_dir,
             commands::backup_dir_info,
             commands::list_device_records,

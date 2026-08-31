@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::io::Read;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::models::DeviceStatus;
 
@@ -98,10 +99,12 @@ pub fn run_adb(adb: &PathBuf, args: &[&str]) -> Result<String, String> {
 }
 
 /// 流式执行 adb pull：逐块读取 stderr 解析百分比进度并回调，
-/// 用于大文件（视频）拉取时显示实时百分比，避免长时间无反馈
+/// 用于大文件（视频）拉取时显示实时百分比，避免长时间无反馈。
+/// `cancel` 置 true 时立即 kill adb 子进程并返回 Err("已取消")，实现取消。
 pub fn run_adb_pull_streaming(
     adb: &PathBuf,
     args: &[&str],
+    cancel: &AtomicBool,
     mut on_progress: impl FnMut(Option<u32>, &str),
 ) -> Result<(), String> {
     let mut cmd = Command::new(adb);
@@ -114,6 +117,12 @@ pub fn run_adb_pull_streaming(
     let mut buf = String::new();
     let mut chunk = [0u8; 2048];
     loop {
+        // 取消：立即杀死 adb 子进程，停止当前拉取
+        if cancel.load(Ordering::Relaxed) {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err("已取消".into());
+        }
         let n = stderr.read(&mut chunk).map_err(|e| e.to_string())?;
         if n == 0 {
             break;

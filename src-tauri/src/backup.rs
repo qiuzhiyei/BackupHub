@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use tauri::{AppHandle, Emitter};
 
@@ -31,6 +32,7 @@ pub fn perform_backup(
     options: &BackupOptions,
     custom_name: &str,
     note: &str,
+    cancel: &AtomicBool,
 ) -> Result<BackupSnapshot, String> {
     let (model, manufacturer, brand) = fetch_device_info(adb_path, serial);
     let now = chrono::Utc::now().timestamp_millis();
@@ -42,12 +44,12 @@ pub fn perform_backup(
     // 通话记录因系统限制被跳过时，在最终完成摘要里附注说明
     let mut call_skip_note = String::new();
 
-    if options.sms {
+    if options.sms && !cancel.load(Ordering::Relaxed) {
         emit(app, ProgressPayload {
             stage: "sms".into(), current: 0, total: 0,
             message: "正在读取短信…".into(),
         });
-        match collect_sms(adb_path, serial, app) {
+        match collect_sms(adb_path, serial, app, cancel) {
             Ok(v) => sms_list = v,
             Err(e) => {
                 emit(app, ProgressPayload {
@@ -58,12 +60,12 @@ pub fn perform_backup(
         }
     }
 
-    if options.calls {
+    if options.calls && !cancel.load(Ordering::Relaxed) {
         emit(app, ProgressPayload {
             stage: "calls".into(), current: 0, total: 0,
             message: "正在读取通话记录…".into(),
         });
-        match collect_calls(adb_path, serial, app) {
+        match collect_calls(adb_path, serial, app, cancel) {
             Ok(v) => call_list = v,
             Err(e) => {
                 // 通话记录受系统限制（adb shell 无 READ_CALL_LOG）时，给出友好提示而非裸堆栈
@@ -81,12 +83,12 @@ pub fn perform_backup(
         }
     }
 
-    if options.contacts {
+    if options.contacts && !cancel.load(Ordering::Relaxed) {
         emit(app, ProgressPayload {
             stage: "contacts".into(), current: 0, total: 0,
             message: "正在读取通讯录…".into(),
         });
-        match collect_contacts(adb_path, serial, app) {
+        match collect_contacts(adb_path, serial, app, cancel) {
             Ok(v) => contact_list = v,
             Err(e) => {
                 emit(app, ProgressPayload {
@@ -97,10 +99,19 @@ pub fn perform_backup(
         }
     }
 
+    // 取消：后续节未执行/被中断，在备注里标注
+    let cancelled = cancel.load(Ordering::Relaxed);
+
     emit(app, ProgressPayload {
         stage: "saving".into(), current: 0, total: 0,
         message: "正在写入本地快照…".into(),
     });
+
+    let final_note = if cancelled {
+        format!("{}（已取消）{}", note, call_skip_note)
+    } else {
+        format!("{}{}", note, call_skip_note)
+    };
 
     let meta = BackupSnapshot {
         id: id.clone(),
@@ -110,7 +121,7 @@ pub fn perform_backup(
         device_manufacturer: manufacturer,
         device_brand: brand,
         custom_name: custom_name.to_string(),
-        note: note.to_string(),
+        note: final_note,
         created_at: now,
         sms_count: 0,
         call_count: 0,
@@ -124,7 +135,8 @@ pub fn perform_backup(
         current: saved.sms_count + saved.call_count + saved.contact_count,
         total: saved.sms_count + saved.call_count + saved.contact_count,
         message: format!(
-            "完成: 短信 {} 条, 通话 {} 条, 联系人 {} 个{}",
+            "{}: 短信 {} 条, 通话 {} 条, 联系人 {} 个{}",
+            if cancelled { "已取消" } else { "完成" },
             saved.sms_count, saved.call_count, saved.contact_count, call_skip_note
         ),
     });
@@ -132,7 +144,7 @@ pub fn perform_backup(
     Ok(saved)
 }
 
-fn collect_sms(adb: &PathBuf, serial: &str, app: &AppHandle) -> Result<Vec<Sms>, String> {
+fn collect_sms(adb: &PathBuf, serial: &str, app: &AppHandle, cancel: &AtomicBool) -> Result<Vec<Sms>, String> {
     let mut result: Vec<Sms> = Vec::new();
 
     // SMS（不使用 --sort，避免 adb shell 按空格拼接参数破坏查询；改为本地排序）
@@ -163,6 +175,9 @@ fn collect_sms(adb: &PathBuf, serial: &str, app: &AppHandle) -> Result<Vec<Sms>,
                 total,
                 message: "正在读取短信…".into(),
             });
+            if cancel.load(Ordering::Relaxed) {
+                break;
+            }
         }
     }
 
@@ -212,6 +227,9 @@ fn collect_sms(adb: &PathBuf, serial: &str, app: &AppHandle) -> Result<Vec<Sms>,
                     total,
                     message: "正在读取彩信…".into(),
                 });
+                if cancel.load(Ordering::Relaxed) {
+                    break;
+                }
             }
         }
     }
@@ -221,7 +239,7 @@ fn collect_sms(adb: &PathBuf, serial: &str, app: &AppHandle) -> Result<Vec<Sms>,
     Ok(result)
 }
 
-fn collect_calls(adb: &PathBuf, serial: &str, app: &AppHandle) -> Result<Vec<CallLog>, String> {
+fn collect_calls(adb: &PathBuf, serial: &str, app: &AppHandle, cancel: &AtomicBool) -> Result<Vec<CallLog>, String> {
     let uri = "content://call_log/calls";
     let projection = &["number", "duration", "date", "type", "name"];
     // Android 9+ 上 adb shell（uid 2000）默认无 READ_CALL_LOG，content query 会被 SecurityException 拒绝。
@@ -255,6 +273,9 @@ fn collect_calls(adb: &PathBuf, serial: &str, app: &AppHandle) -> Result<Vec<Cal
                 total,
                 message: "正在读取通话记录…".into(),
             });
+            if cancel.load(Ordering::Relaxed) {
+                break;
+            }
         }
     }
     // 按时间倒序
@@ -270,7 +291,7 @@ fn is_permission_denial(err: &str) -> bool {
         || err.contains("WRITE_CALL_LOG")
 }
 
-fn collect_contacts(adb: &PathBuf, serial: &str, app: &AppHandle) -> Result<Vec<Contact>, String> {
+fn collect_contacts(adb: &PathBuf, serial: &str, app: &AppHandle, cancel: &AtomicBool) -> Result<Vec<Contact>, String> {
     let rows = adb::query_provider(
         adb,
         serial,
@@ -338,6 +359,9 @@ fn collect_contacts(adb: &PathBuf, serial: &str, app: &AppHandle) -> Result<Vec<
                 total,
                 message: "正在读取通讯录…".into(),
             });
+            if cancel.load(Ordering::Relaxed) {
+                break;
+            }
         }
     }
     let mut result: Vec<Contact> = map.into_values().collect();
