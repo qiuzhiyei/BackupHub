@@ -131,7 +131,7 @@ export async function mediaView(kind: MediaKind): Promise<HTMLElement> {
     const pullBtn = el("button", {
       class: "btn btn-primary",
       disabled: selCount === 0,
-    }, "选中备份到…");
+    }, "开始备份");
     pullBtn.onclick = async () => {
       const serial = deviceSelect.value;
       if (!serial) { toast("请先选择设备", "error"); return; }
@@ -214,7 +214,7 @@ export async function mediaView(kind: MediaKind): Promise<HTMLElement> {
         scanBtn,
         el("button", { class: "btn btn-ghost btn-sm", onclick: () => void refreshDevices() }, "刷新"),
       ),
-      el("div", { class: "hint-line" }, `扫描后按设备原目录分类列出${word}，默认全选（=全部备份），可取消个别目录。点「选中备份到…」直接备份到「备份目录」下的 <设备>/<时间>/${kind === "photos" ? "PHOTO" : "VIDEO"} 子目录（备份目录可在设置中改）。`),
+      el("div", { class: "hint-line" }, `扫描后按设备原目录分类列出${word}，默认全选（=全部备份），可取消个别目录。点「开始备份」直接备份到「备份目录」下的 <设备>/<时间>/${kind === "photos" ? "PHOTO" : "VIDEO"} 子目录（备份目录可在设置中改）。`),
     ),
     folderWrap,
     footer,
