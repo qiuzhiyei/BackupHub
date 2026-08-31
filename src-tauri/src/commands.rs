@@ -97,7 +97,8 @@ pub async fn scan_photos(
     serial: String,
 ) -> Result<Vec<PhotoFolder>, String> {
     let adb = resolve_adb(&state)?;
-    tauri::async_runtime::spawn_blocking(move || crate::media::scan_photos(&app, &adb, &serial))
+    let labels = state.storage.load_app_labels();
+    tauri::async_runtime::spawn_blocking(move || crate::media::scan_photos(&app, &adb, &serial, &labels))
         .await
         .map_err(|e| format!("任务异常: {}", e))?
 }
@@ -110,7 +111,8 @@ pub async fn scan_videos(
     serial: String,
 ) -> Result<Vec<PhotoFolder>, String> {
     let adb = resolve_adb(&state)?;
-    tauri::async_runtime::spawn_blocking(move || crate::media::scan_videos(&app, &adb, &serial))
+    let labels = state.storage.load_app_labels();
+    tauri::async_runtime::spawn_blocking(move || crate::media::scan_videos(&app, &adb, &serial, &labels))
         .await
         .map_err(|e| format!("任务异常: {}", e))?
 }

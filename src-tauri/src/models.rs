@@ -167,6 +167,9 @@ pub struct PhotoFolder {
     pub dir: String,
     /// 目录最后一段名
     pub name: String,
+    /// 所属应用名（Android/data|media|obb/<pkg> 解析；非应用目录为 None）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub app: Option<String>,
     pub count: usize,
     pub total_size: i64,
     pub files: Vec<PhotoFile>,

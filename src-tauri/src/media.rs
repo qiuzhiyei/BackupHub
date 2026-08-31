@@ -8,20 +8,43 @@ use crate::backup;
 use crate::models::{BackupSnapshot, PhotoFile, PhotoFolder, ProgressPayload};
 use crate::storage::{self, Storage};
 
+/// Android 应用私有目录前缀：Android/{data,media,obb}/<包名>/...
+const APP_DIRS: &[&str] = &["Android/data/", "Android/media/", "Android/obb/"];
+
+/// 扫描根（设备内置存储）
+const ROOT_PATH: &str = "/storage/emulated/0";
+
 /// 扫描设备相册：文件系统 find + stat（完整，含 Android/data 与 .nomedia 目录，
 /// MediaStore 在 Android 11+ 不索引应用私有目录，会漏）
-pub fn scan_photos(app: &AppHandle, adb: &PathBuf, serial: &str) -> Result<Vec<PhotoFolder>, String> {
+pub fn scan_photos(
+    app: &AppHandle,
+    adb: &PathBuf,
+    serial: &str,
+    labels: &HashMap<String, String>,
+) -> Result<Vec<PhotoFolder>, String> {
     const PHOTO_EXTS: &[&str] = &["jpg", "jpeg", "png", "gif", "webp", "bmp", "heic", "heif"];
-    scan_media_fs(app, adb, serial, PHOTO_EXTS, "相册")
+    scan_media_fs(app, adb, serial, PHOTO_EXTS, "相册", labels)
 }
 
 /// 扫描设备视频：文件系统 find + stat
-pub fn scan_videos(app: &AppHandle, adb: &PathBuf, serial: &str) -> Result<Vec<PhotoFolder>, String> {
+pub fn scan_videos(
+    app: &AppHandle,
+    adb: &PathBuf,
+    serial: &str,
+    labels: &HashMap<String, String>,
+) -> Result<Vec<PhotoFolder>, String> {
     const VIDEO_EXTS: &[&str] = &["mp4", "mov", "mkv", "3gp", "m4v", "ts", "avi", "flv", "webm"];
-    scan_media_fs(app, adb, serial, VIDEO_EXTS, "视频")
+    scan_media_fs(app, adb, serial, VIDEO_EXTS, "视频", labels)
 }
 
-fn scan_media_fs(app: &AppHandle, adb: &PathBuf, serial: &str, exts: &[&str], label: &str) -> Result<Vec<PhotoFolder>, String> {
+fn scan_media_fs(
+    app: &AppHandle,
+    adb: &PathBuf,
+    serial: &str,
+    exts: &[&str],
+    label: &str,
+    labels: &HashMap<String, String>,
+) -> Result<Vec<PhotoFolder>, String> {
     let _ = app.emit(
         "media://progress",
         ProgressPayload {
@@ -58,9 +81,11 @@ fn scan_media_fs(app: &AppHandle, adb: &PathBuf, serial: &str, exts: &[&str], la
         if path.is_empty() {
             continue;
         }
-        let dir = dirname(path);
+        let parent = dirname(path);
         let name = basename(path);
-        groups.entry(dir).or_default().push(PhotoFile { path: path.to_string(), name, size, date: mtime });
+        // 应用私有目录归并到应用根（同一应用的多个子目录合并为一项），其余按各自父目录分组
+        let key = group_key(&parent);
+        groups.entry(key).or_default().push(PhotoFile { path: path.to_string(), name, size, date: mtime });
     }
 
     let mut folders: Vec<PhotoFolder> = groups
@@ -69,8 +94,14 @@ fn scan_media_fs(app: &AppHandle, adb: &PathBuf, serial: &str, exts: &[&str], la
             files.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
             let count = files.len();
             let total_size = files.iter().map(|f| f.size).sum();
-            let name = basename(&dir);
-            PhotoFolder { dir, name, count, total_size, files }
+            let app = app_of_dir(&dir, labels);
+            // 应用目录用应用名作为名；根目录单独处理；其余取末段目录名
+            let name = if dir == ROOT_PATH {
+                "根目录".to_string()
+            } else {
+                app.clone().unwrap_or_else(|| basename(&dir))
+            };
+            PhotoFolder { dir, name, app, count, total_size, files }
         })
         .collect();
     folders.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
@@ -117,7 +148,8 @@ pub fn pull_media_files(
     let dest_str = dest.to_string_lossy().to_string();
 
     let total = files.len();
-    let (ok, _total) = pull_files_grouped(app, adb, serial, files, &dest, tag, total)?;
+    let labels = storage.load_app_labels();
+    let (ok, _total) = pull_files_grouped(app, adb, serial, files, &dest, tag, total, &labels)?;
 
     // 自动备注：照片/视频备份（N 个）
     let word = if tag == "VIDEO" { "视频" } else { "照片" };
@@ -161,6 +193,7 @@ fn pull_files_grouped(
     dest: &Path,
     tag: &str,
     total: usize,
+    labels: &HashMap<String, String>,
 ) -> Result<(usize, usize), String> {
     let stage = if tag == "VIDEO" { "video" } else { "photo" };
 
@@ -177,8 +210,9 @@ fn pull_files_grouped(
 
     for (parent_dir, group_files) in &group_list {
         let base = basename(parent_dir);
-        // 本地子目录：保留设备原目录结构（相对扫描根 /storage/emulated/0 镜像）
-        let rel = relative_under_root(parent_dir);
+        // 本地子目录：应用私有目录用应用名替换前缀（Android/data|media|obb/<pkg> → <应用名>），
+        // 其余保留设备原相对结构，便于按应用归类查找
+        let rel = local_subpath(parent_dir, labels);
         let local_subdir = if rel.is_empty() {
             dest.to_path_buf()
         } else {
@@ -294,6 +328,56 @@ fn relative_under_root(path: &str) -> String {
         return rest.trim_start_matches('/').to_string();
     }
     storage::safe(path)
+}
+
+/// 分组键：应用私有目录归并到应用根（Android/{data,media,obb}/<包名>），
+/// 同一应用散落在各子目录的媒体合并为同一项；其余目录按各自父目录分组（保持原样）。
+fn group_key(parent: &str) -> String {
+    let rel = relative_under_root(parent);
+    for prefix in APP_DIRS {
+        if let Some(rest) = rel.strip_prefix(prefix) {
+            let pkg = rest.split('/').next().unwrap_or(rest);
+            return format!("{}{}{}", ROOT_PATH, prefix, pkg);
+        }
+    }
+    parent.to_string()
+}
+
+/// 由设备父目录计算本地子路径：应用私有目录（Android/{data,media,obb}/<包名>/...）
+/// 用应用名（友好名优先，否则包名）替换前缀，便于按应用归类；其余路径保持原相对结构。
+fn local_subpath(parent_dir: &str, labels: &HashMap<String, String>) -> String {
+    let rel = relative_under_root(parent_dir);
+    for prefix in APP_DIRS {
+        if let Some(rest) = rel.strip_prefix(prefix) {
+            // rest = "<包名>[/子路径...]"
+            let (pkg, sub) = match rest.split_once('/') {
+                Some((p, s)) => (p, s),
+                None => (rest, ""),
+            };
+            let label = labels
+                .get(pkg)
+                .cloned()
+                .unwrap_or_else(|| pkg.to_string());
+            return if sub.is_empty() {
+                label
+            } else {
+                format!("{}/{}", label, sub)
+            };
+        }
+    }
+    rel
+}
+
+/// 解析某设备目录所属应用（用于扫描列表展示）：应用私有目录返回应用名，否则 None
+fn app_of_dir(dir: &str, labels: &HashMap<String, String>) -> Option<String> {
+    let rel = relative_under_root(dir);
+    for prefix in APP_DIRS {
+        if let Some(rest) = rel.strip_prefix(prefix) {
+            let pkg = rest.split('/').next().unwrap_or(rest);
+            return Some(labels.get(pkg).cloned().unwrap_or_else(|| pkg.to_string()));
+        }
+    }
+    None
 }
 
 fn basename(p: &str) -> String {
