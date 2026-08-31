@@ -1,6 +1,5 @@
-import { el } from "./dom";
+import { el, toast } from "./dom";
 import { startRouter } from "./router";
-import { notifyDialog } from "./modal";
 import * as api from "./api";
 import type { ProgressPayload } from "./types";
 
@@ -86,13 +85,18 @@ function setupTaskProgress(): void {
         if (m) {
           const dest = m[1];
           const btn = el("button", { class: "btn btn-sm btn-ghost tb-open" }, "打开");
-          btn.onclick = () => void api.openFolder(dest);
+          btn.onclick = async () => {
+            try {
+              await api.openFolder(dest);
+            } catch (e) {
+              toast("打开文件夹失败: " + String(e), "error");
+            }
+          };
           t.row.appendChild(btn);
         }
         setTimeout(() => { tasks.delete(g); t.row.remove(); refresh(); }, 8000);
       }
       refresh();
-      void notifyDialog(p.message, "操作完成");
       return;
     }
     if (p.stage === "error") {
@@ -103,7 +107,6 @@ function setupTaskProgress(): void {
         setTimeout(() => { if (lastGroup) { tasks.delete(lastGroup); t.row.remove(); refresh(); } }, 8000);
       }
       refresh();
-      void notifyDialog(p.message, "出错", true);
       return;
     }
     const g = groupOf(p.stage);
