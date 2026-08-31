@@ -241,19 +241,6 @@ export function createSnapshotRow(
       el("button", {
         class: "btn btn-sm btn-ghost",
         onclick: async () => {
-          const dir = await api.pickExportDir();
-          if (!dir) return;
-          try {
-            const out = await api.exportSnapshot(s.id, "json", dir);
-            toast("已导出到: " + out, "success");
-          } catch (e) {
-            toast("导出失败: " + String(e), "error");
-          }
-        },
-      }, "导出"),
-      el("button", {
-        class: "btn btn-sm btn-ghost",
-        onclick: async () => {
           const note = await promptDialog("请输入备份备注", s.note, "编辑备注");
           if (note !== null) {
             await api.updateSnapshotNote(s.id, note.trim());

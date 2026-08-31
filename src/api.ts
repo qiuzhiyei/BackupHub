@@ -118,14 +118,6 @@ export async function pickExportDir(): Promise<string | null> {
   return typeof sel === "string" ? sel : sel[0];
 }
 
-export async function exportSnapshot(
-  id: string,
-  format: "csv" | "json",
-  dir: string,
-): Promise<string> {
-  return invoke<string>("export_snapshot", { id, format, dir });
-}
-
 export async function importSnapshot(dir: string): Promise<BackupSnapshot> {
   return invoke<BackupSnapshot>("import_snapshot", { dir });
 }

@@ -5,7 +5,6 @@ use tauri::{AppHandle, State};
 
 use crate::adb;
 use crate::backup;
-use crate::export;
 use crate::models::{
     BackupOptions, BackupSnapshot, Contact, DeviceRecord, DeviceStatus, PageQuery, PageResult,
     PhotoFolder, PullSummary, Sms, SmsThread,
@@ -262,18 +261,6 @@ pub fn update_snapshot_custom_name(
     state: State<AppState>,
 ) -> Result<(), String> {
     state.storage.update_snapshot_custom_name(&id, &name)
-}
-
-#[tauri::command]
-pub fn export_snapshot(
-    id: String,
-    format: String,
-    dir: String,
-    state: State<AppState>,
-) -> Result<String, String> {
-    let dir = PathBuf::from(dir);
-    let out = export::export_snapshot(&state.storage, &id, &format, &dir)?;
-    Ok(out.to_string_lossy().to_string())
 }
 
 #[tauri::command]

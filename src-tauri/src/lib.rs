@@ -1,7 +1,6 @@
 mod adb;
 mod backup;
 mod commands;
-mod export;
 mod media;
 mod models;
 mod storage;
@@ -45,8 +44,6 @@ pub fn run() {
             commands::update_device_name,
             commands::update_snapshot_note,
             commands::update_snapshot_custom_name,
-            commands::export_snapshot,
-            commands::query_sms,
             commands::list_sms_threads,
             commands::get_sms_thread,
             commands::query_calls,

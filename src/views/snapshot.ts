@@ -61,22 +61,9 @@ export async function snapshotView(p: { params: Record<string, string> }): Promi
   const contentEl = el("div", { class: "tab-content" });
   const pageEl = el("div", { class: "tab-pagination" });
 
-  const exportBtn = el("button", { class: "btn btn-ghost" }, "导出 JSON");
-  exportBtn.onclick = async () => {
-    const dir = await api.pickExportDir();
-    if (!dir) return;
-    try {
-      const out = await api.exportSnapshot(s.id, "json", dir);
-      toast("已导出到: " + out, "success");
-    } catch (e) {
-      toast("导出失败: " + String(e), "error");
-    }
-  };
-
   wrap.replaceChildren(
     pageHeader(s.custom_name || s.device_model || "备份快照",
       el("button", { class: "btn btn-ghost btn-sm", onclick: () => navigate(`#/devices/${encodeURIComponent(s.device_serial)}`) }, "← 备份历史"),
-      exportBtn,
     ),
     el("div", { class: "snap-meta" },
       el("span", { class: "sm-item" }, esc([s.device_brand, s.device_model].filter(Boolean).join(" ") || "—")),
