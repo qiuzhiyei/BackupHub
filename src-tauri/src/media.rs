@@ -6,56 +6,57 @@ use tauri::{AppHandle, Emitter};
 use crate::adb;
 use crate::models::{PhotoFile, PhotoFolder, ProgressPayload};
 
-/// 扫描设备相册（content://media/external/images/media），按原目录分组
-/// 覆盖 MediaStore 已索引的全部图片（DCIM/Pictures/Download 等）；
-/// .nomedia 目录与 app 私有目录由系统排除（不可备份，也不算遗漏）
+/// 扫描设备相册：文件系统 find + stat（完整，含 Android/data 与 .nomedia 目录，
+/// MediaStore 在 Android 11+ 不索引应用私有目录，会漏）
 pub fn scan_photos(app: &AppHandle, adb: &PathBuf, serial: &str) -> Result<Vec<PhotoFolder>, String> {
-    scan_media(app, adb, serial, "content://media/external/images/media", "相册")
+    const PHOTO_EXTS: &[&str] = &["jpg", "jpeg", "png", "gif", "webp", "bmp", "heic", "heif"];
+    scan_media_fs(app, adb, serial, PHOTO_EXTS, "相册")
 }
 
-/// 扫描设备视频（content://media/external/video/media），按原目录分组
+/// 扫描设备视频：文件系统 find + stat
 pub fn scan_videos(app: &AppHandle, adb: &PathBuf, serial: &str) -> Result<Vec<PhotoFolder>, String> {
-    scan_media(app, adb, serial, "content://media/external/video/media", "视频")
+    const VIDEO_EXTS: &[&str] = &["mp4", "mov", "mkv", "3gp", "m4v", "ts", "avi", "flv", "webm"];
+    scan_media_fs(app, adb, serial, VIDEO_EXTS, "视频")
 }
 
-fn scan_media(app: &AppHandle, adb: &PathBuf, serial: &str, uri: &str, label: &str) -> Result<Vec<PhotoFolder>, String> {
+fn scan_media_fs(app: &AppHandle, adb: &PathBuf, serial: &str, exts: &[&str], label: &str) -> Result<Vec<PhotoFolder>, String> {
     let _ = app.emit(
         "media://progress",
-        ProgressPayload { stage: "scan".into(), current: 0, total: 0, message: format!("正在扫描{}…", label) },
+        ProgressPayload {
+            stage: "scan".into(),
+            current: 0,
+            total: 0,
+            message: format!("正在扫描{}（遍历全部目录，可能需要 1-2 分钟）…", label),
+        },
     );
-    // 个别 ROM 对 display_name/_size 等列校验严格，整条查询会因无效列失败；
-    // 先用常用投影，失败则降级为仅 _data（文件名从路径 basename 推导）
-    let rows = match adb::query_provider(
-        adb,
-        serial,
-        uri,
-        &["_data", "_size", "date_added"],
-        None,
-        None,
-    ) {
-        Ok(r) => r,
-        Err(_) => adb::query_provider(adb, serial, uri, &["_data"], None, None)?,
-    };
+    // find /storage/emulated/0 -type f \( -iname '*.mp4' -o ... \) -exec stat -c '%n|%s|%Y' {} + 2>/dev/null
+    let ext_part = exts.iter().map(|e| format!("-iname '*.{}'", e)).collect::<Vec<_>>().join(" -o ");
+    let cmd = format!(
+        "find /storage/emulated/0 -type f \\( {} \\) -exec stat -c '%n|%s|%Y' {{}} + 2>/dev/null",
+        ext_part
+    );
+    let out = adb::run_adb(adb, &["-s", serial, "shell", &cmd])?;
 
     let mut groups: HashMap<String, Vec<PhotoFile>> = HashMap::new();
-    for row in &rows {
-        let data = match row.get("_data") {
-            Some(v) => v.clone(),
-            None => continue,
-        };
-        if data.is_empty() {
+    for line in out.lines() {
+        let line = line.trim();
+        if line.is_empty() {
             continue;
         }
-        let dir = dirname(&data);
-        let name = basename(&data);
-        let size = row.get("_size").and_then(|v| v.parse::<i64>().ok()).unwrap_or(0);
-        // date_added 是秒，转毫秒
-        let date = row
-            .get("date_added")
-            .and_then(|v| v.parse::<i64>().ok())
-            .unwrap_or(0)
-            .saturating_mul(1000);
-        groups.entry(dir).or_default().push(PhotoFile { path: data, name, size, date });
+        // 格式 path|size|mtime；路径可能含 |，故从右取 3 段
+        let parts: Vec<&str> = line.rsplitn(3, '|').collect();
+        if parts.len() < 3 {
+            continue;
+        }
+        let mtime = parts[0].parse::<i64>().unwrap_or(0).saturating_mul(1000);
+        let size = parts[1].parse::<i64>().unwrap_or(0);
+        let path = parts[2];
+        if path.is_empty() {
+            continue;
+        }
+        let dir = dirname(path);
+        let name = basename(path);
+        groups.entry(dir).or_default().push(PhotoFile { path: path.to_string(), name, size, date: mtime });
     }
 
     let mut folders: Vec<PhotoFolder> = groups
