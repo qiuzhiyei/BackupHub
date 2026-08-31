@@ -228,9 +228,13 @@ export function createSnapshotRow(
         : el("div", { class: "snap-name" }, s.custom_name || "—"),
     ),
     el("div", { class: "snap-stats" },
-      el("span", { class: "mini-chip" }, `✉️ ${s.sms_count}`),
-      el("span", { class: "mini-chip" }, `📞 ${s.call_count}`),
-      el("span", { class: "mini-chip" }, `👥 ${s.contact_count}`),
+      ...(s.kind === "PHOTO" || s.kind === "VIDEO"
+        ? [el("span", { class: "mini-chip media-chip" }, s.kind === "PHOTO" ? "📷 照片备份" : "🎞️ 视频备份")]
+        : [
+          el("span", { class: "mini-chip" }, `✉️ ${s.sms_count}`),
+          el("span", { class: "mini-chip" }, `📞 ${s.call_count}`),
+          el("span", { class: "mini-chip" }, `👥 ${s.contact_count}`),
+        ]),
     ),
     el("div", { class: "snap-note" }, s.note ? esc(s.note) : ""),
     el("div", { class: "snap-actions" },

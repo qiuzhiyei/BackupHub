@@ -1533,6 +1533,59 @@ body {
   background: linear-gradient(90deg, #f59e0b 0%, #fbbf24 100%);
 }
 
+/* 媒体备份进度面板：sticky 钉底 + 醒目样式（footer 在 setProgressVisible 时让位为 static） */
+.photo-progress {
+  position: sticky;
+  bottom: 0;
+  z-index: 20;
+  background: var(--surface);
+  border: 1.5px solid var(--primary);
+  border-radius: 12px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
+  padding: 16px;
+}
+.photo-progress .panel-head h3 {
+  font-size: 16px;
+}
+.photo-progress .progress-stage {
+  margin-bottom: 10px;
+}
+.photo-progress .progress-right {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+.photo-progress .progress-pct {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--primary);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.photo-progress .progress-pct.done {
+  color: #16a34a;
+}
+.photo-progress .progress-count {
+  font-size: 14px;
+}
+.photo-progress .progress-bar {
+  height: 16px;
+}
+.photo-progress .progress-fill.done {
+  background: linear-gradient(90deg, #22c55e 0%, #4ade80 100%);
+}
+.photo-progress .progress-msg {
+  font-size: 13.5px;
+  color: var(--text);
+  margin-top: 10px;
+}
+.progress-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
 /* ---------- 诊断 ---------- */
 .diag-actions {
   display: flex;
@@ -1723,4 +1776,35 @@ body {
 }
 ::-webkit-scrollbar-thumb:hover {
   background: var(--text-soft);
+}
+
+/* ---------- 媒体快照（照片/视频）浏览页 ---------- */
+.media-snap-panel {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 28px;
+}
+.media-snap-ico {
+  font-size: 52px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.media-snap-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.media-snap-title {
+  font-size: 18px;
+  font-weight: 600;
+}
+.media-snap-note {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.media-chip {
+  background: var(--surface-2);
+  border-color: var(--border-strong);
+  font-weight: 500;
 }

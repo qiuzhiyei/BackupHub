@@ -28,6 +28,58 @@ export async function snapshotView(p: { params: Record<string, string> }): Promi
   }
 
   const s = snapshot;
+  const isMedia = s.kind === "PHOTO" || s.kind === "VIDEO";
+
+  // 媒体快照（照片/视频）：不显示短信/通话/通讯录标签，改为「打开文件夹」
+  if (isMedia) {
+    const word = s.kind === "PHOTO" ? "照片" : "视频";
+    const ico = s.kind === "PHOTO" ? "📷" : "🎞️";
+    const openBtn = el("button", { class: "btn btn-primary" }, "打开文件夹");
+    openBtn.addEventListener("click", async () => {
+      try {
+        const p = await api.getSnapshotPath(s.id);
+        if (p) {
+          await api.openFolder(p);
+        } else {
+          toast("未找到备份目录", "error");
+        }
+      } catch (e) {
+        toast("打开文件夹失败: " + String(e), "error");
+      }
+    });
+    wrap.replaceChildren(
+      pageHeader(s.custom_name || s.device_model || `${word}备份`,
+        el("button", { class: "btn btn-ghost btn-sm", onclick: () => navigate(`#/devices/${encodeURIComponent(s.device_serial)}`) }, "← 备份历史"),
+      ),
+      el("div", { class: "snap-meta" },
+        el("span", { class: "sm-item" }, esc([s.device_brand, s.device_model].filter(Boolean).join(" ") || "—")),
+        el("span", { class: "sm-sep" }, "·"),
+        el("span", { class: "sm-item" }, `序列号 ${esc(s.device_serial)}`),
+        el("span", { class: "sm-sep" }, "·"),
+        el("span", { class: "sm-item" }, fmtDate(s.created_at)),
+        el("span", { class: "badge badge-ok" }, `${word}备份`),
+        el("button", { class: "btn btn-ghost btn-sm sm-edit", title: "编辑名称" }, "✎ 编辑名称"),
+      ),
+      el("div", { class: "panel media-snap-panel" },
+        el("div", { class: "media-snap-ico" }, ico),
+        el("div", { class: "media-snap-body" },
+          el("div", { class: "media-snap-title" }, `${word}备份`),
+          el("div", { class: "media-snap-note" }, s.note ? esc(s.note) : `点击下方按钮在文件管理器中查看已备份的${word}`),
+          openBtn,
+        ),
+      ),
+    );
+    wrap.querySelector(".sm-edit")?.addEventListener("click", async () => {
+      const name = await promptDialog("请输入设备名称", s.custom_name || s.device_model || "", "编辑设备名称");
+      if (name !== null) {
+        await api.updateSnapshotCustomName(s.id, name.trim());
+        toast("已更新名称", "success");
+        snapshotView(p).then((n) => { wrap.replaceWith(n); });
+      }
+    });
+    return wrap;
+  }
+
   let tab: Tab = "sms";
   let page = 1;
   let filters = { search: "", dateFrom: null as number | null, dateTo: null as number | null };

@@ -25,9 +25,13 @@ function recentRow(s: BackupSnapshot): HTMLElement {
       el("div", { class: "recent-time" }, fmtDate(s.created_at)),
     ),
     el("div", { class: "recent-chips" },
-      el("span", { class: "mini-chip" }, `✉️ ${s.sms_count}`),
-      el("span", { class: "mini-chip" }, `📞 ${s.call_count}`),
-      el("span", { class: "mini-chip" }, `👥 ${s.contact_count}`),
+      ...(s.kind === "PHOTO" || s.kind === "VIDEO"
+        ? [el("span", { class: "mini-chip media-chip" }, s.kind === "PHOTO" ? "📷 照片" : "🎞️ 视频")]
+        : [
+          el("span", { class: "mini-chip" }, `✉️ ${s.sms_count}`),
+          el("span", { class: "mini-chip" }, `📞 ${s.call_count}`),
+          el("span", { class: "mini-chip" }, `👥 ${s.contact_count}`),
+        ]),
     ),
   );
 }
