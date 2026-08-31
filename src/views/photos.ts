@@ -144,7 +144,6 @@ export async function mediaView(kind: MediaKind): Promise<HTMLElement> {
         const res = kind === "photos"
           ? await api.pullPhotos(serial, [...c.selected])
           : await api.pullVideos(serial, [...c.selected]);
-        toast(`完成：成功 ${res.folders}/${c.selected.size} 个目录 → ${res.dest}`, "success");
         progressPanel.appendChild(
           el("button", { class: "btn btn-ghost btn-sm", onclick: () => void api.openFolder(res.dest) }, "打开文件夹"),
         );

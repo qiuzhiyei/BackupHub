@@ -132,7 +132,6 @@ export async function backupView(p: { query: URLSearchParams }): Promise<HTMLEle
       try {
         unlisten = await api.onBackupProgress((pp) => renderProgress(pp));
         const snap = await api.backupStart(selectedSerial, options, name, note);
-        toast(`备份完成：短信 ${snap.sms_count} · 通话 ${snap.call_count} · 联系人 ${snap.contact_count}`, "success");
         await new Promise((r) => setTimeout(r, 600));
         navigate(`#/snapshot/${encodeURIComponent(snap.id)}`);
       } catch (e) {

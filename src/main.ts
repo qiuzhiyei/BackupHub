@@ -92,10 +92,7 @@ function setupTaskProgress(): void {
         setTimeout(() => { tasks.delete(g); t.row.remove(); refresh(); }, 8000);
       }
       refresh();
-      // 长操作（拉取/备份）完成弹窗确认，走开回来能看到结果
-      if (g === "pull-photo" || g === "pull-video" || g === "backup") {
-        void notifyDialog(p.message, "操作完成");
-      }
+      void notifyDialog(p.message, "操作完成");
       return;
     }
     if (p.stage === "error") {
@@ -106,9 +103,7 @@ function setupTaskProgress(): void {
         setTimeout(() => { if (lastGroup) { tasks.delete(lastGroup); t.row.remove(); refresh(); } }, 8000);
       }
       refresh();
-      if (["pull-photo", "pull-video", "backup"].includes(lastGroup)) {
-        void notifyDialog(p.message, "出错", true);
-      }
+      void notifyDialog(p.message, "出错", true);
       return;
     }
     const g = groupOf(p.stage);
