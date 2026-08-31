@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -214,6 +215,38 @@ impl Storage {
         Some(self.snapshot_dir(&meta, &meta.kind).to_string_lossy().to_string())
     }
 
+    // ---------- 应用名映射 ----------
+    /// 应用名映射文件：<备份根>/app_labels.json（包名 → 友好名，用户可编辑覆盖默认）
+    fn app_labels_path(&self) -> PathBuf {
+        self.backup_dir().join("app_labels.json")
+    }
+
+    /// 加载应用名映射：内置常见应用默认值 + 用户 app_labels.json 覆盖/扩展。
+    /// 文件不存在时写入默认值，便于用户发现并手动编辑。
+    pub fn load_app_labels(&self) -> HashMap<String, String> {
+        let path = self.app_labels_path();
+        let mut map: HashMap<String, String> = default_app_labels()
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+        match read_json::<HashMap<String, String>>(&path) {
+            Some(user) => {
+                // 用户覆盖优先
+                for (k, v) in user {
+                    map.insert(k, v);
+                }
+            }
+            None => {
+                let defaults: HashMap<String, String> = default_app_labels()
+                    .into_iter()
+                    .map(|(k, v)| (k.to_string(), v.to_string()))
+                    .collect();
+                let _ = write_json(&path, &defaults);
+            }
+        }
+        map
+    }
+
     pub fn delete_snapshot(&self, id: &str) -> Result<(), String> {
         let mut list = self.load_snapshots();
         let pos = list.iter().position(|s| s.id == id);
@@ -318,6 +351,61 @@ impl Storage {
 }
 
 // ---------- 共享辅助 ----------
+/// 内置常见应用包名 → 友好名默认映射；用户可在 <备份根>/app_labels.json 覆盖或扩展
+fn default_app_labels() -> Vec<(&'static str, &'static str)> {
+    vec![
+        ("com.tencent.mm", "微信"),
+        ("com.tencent.mobileqq", "QQ"),
+        ("com.tencent.qqlite", "QQ极速版"),
+        ("com.tencent.wework", "企业微信"),
+        ("com.tencent.qqlive", "腾讯视频"),
+        ("com.tencent.qmusic", "QQ音乐"),
+        ("com.tencent.androidqqmail", "QQ邮箱"),
+        ("com.tencent.qqlauncher", "QQ桌面"),
+        ("com.baidu.tieba", "贴吧"),
+        ("com.baidu.netdisk", "百度网盘"),
+        ("com.baidu.searchbox", "百度"),
+        ("com.baidu.input", "百度输入法"),
+        ("org.telegram.messenger", "Telegram"),
+        ("org.telegram.plus", "Telegram-Plus"),
+        ("com.whatsapp", "WhatsApp"),
+        ("com.instagram.android", "Instagram"),
+        ("com.facebook.katana", "Facebook"),
+        ("com.twitter.android", "X"),
+        ("com.sina.weibo", "微博"),
+        ("com.ss.android.ugc.aweme", "抖音"),
+        ("com.ss.android.ugc.aweme.lite", "抖音极速版"),
+        ("com.smile.gifmaker", "快手"),
+        ("com.kuaishou.nebula", "快手极速版"),
+        ("tv.danmaku.bili", "哔哩哔哩"),
+        ("com.zhihu.android", "知乎"),
+        ("com.xingin.xhs", "小红书"),
+        ("com.taobao.taobao", "淘宝"),
+        ("com.tmall.wireless", "天猫"),
+        ("com.eg.android.AlipayGphone", "支付宝"),
+        ("com.netease.cloudmusic", "网易云音乐"),
+        ("com.netease.mail", "网易邮箱大师"),
+        ("com.netease.lofterandroid", "LOFTER"),
+        ("com.youku.phone", "优酷"),
+        ("com.qiyi.video", "爱奇艺"),
+        ("com.xunmeng.pinduoduo", "拼多多"),
+        ("com.meituan.meituan", "美团"),
+        ("com.sankuai.meituan", "美团"),
+        ("com.dianping.v1", "大众点评"),
+        ("com.sdu.didi.psnger", "滴滴出行"),
+        ("com.jingdong.app.mall", "京东"),
+        ("com.jd.jdlite", "京东极速版"),
+        ("com.kugou.android", "酷狗音乐"),
+        ("com.kugou.android.lite", "酷狗音乐极速版"),
+        ("cmccwm.mobilemusic", "咪咕音乐"),
+        ("com.sohu.inputmethod.sogou", "搜狗输入法"),
+        ("com.iflytek.inputmethod", "讯飞输入法"),
+        ("com.android.chrome", "Chrome"),
+        ("com.microsoft.emmx", "Edge"),
+        ("org.mozilla.firefox", "Firefox"),
+    ]
+}
+
 pub fn device_label(brand: &str, model: &str, serial: &str) -> String {
     let b = safe(brand);
     let m = safe(model);
