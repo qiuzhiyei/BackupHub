@@ -135,13 +135,14 @@ pub async fn pull_photos(
     state: State<'_, AppState>,
     serial: String,
     files: Vec<String>,
+    flatten: bool,
 ) -> Result<BackupSnapshot, String> {
     let adb = resolve_adb(&state)?;
     let storage = state.storage.clone();
     let cancel = state.cancel.clone();
     cancel.store(false, Ordering::Relaxed);
     tauri::async_runtime::spawn_blocking(move || {
-        crate::media::pull_media_files(&app, &storage, &adb, &serial, &files, "PHOTO", "", &cancel)
+        crate::media::pull_media_files(&app, &storage, &adb, &serial, &files, "PHOTO", "", flatten, &cancel)
     })
     .await
     .map_err(|e| format!("任务异常: {}", e))?
@@ -154,13 +155,14 @@ pub async fn pull_videos(
     state: State<'_, AppState>,
     serial: String,
     files: Vec<String>,
+    flatten: bool,
 ) -> Result<BackupSnapshot, String> {
     let adb = resolve_adb(&state)?;
     let storage = state.storage.clone();
     let cancel = state.cancel.clone();
     cancel.store(false, Ordering::Relaxed);
     tauri::async_runtime::spawn_blocking(move || {
-        crate::media::pull_media_files(&app, &storage, &adb, &serial, &files, "VIDEO", "", &cancel)
+        crate::media::pull_media_files(&app, &storage, &adb, &serial, &files, "VIDEO", "", flatten, &cancel)
     })
     .await
     .map_err(|e| format!("任务异常: {}", e))?

@@ -19,10 +19,12 @@ interface Cache {
   selected: Set<string>;
   folders: PhotoFolder[];
   scannedSerial: string;
+  /** 扁平存放：勾选后所有文件直接放 PHOTO/VIDEO 根目录，不保留目录结构 */
+  flatten: boolean;
 }
 const caches: Record<MediaKind, Cache> = {
-  photos: { selected: new Set(), folders: [], scannedSerial: "" },
-  videos: { selected: new Set(), folders: [], scannedSerial: "" },
+  photos: { selected: new Set(), folders: [], scannedSerial: "", flatten: false },
+  videos: { selected: new Set(), folders: [], scannedSerial: "", flatten: false },
 };
 
 const LABEL: Record<MediaKind, string> = { photos: "照片", videos: "视频" };
@@ -167,8 +169,8 @@ export async function mediaView(kind: MediaKind): Promise<HTMLElement> {
       try {
         unlisten = await api.onMediaProgress((p) => renderProgress(p));
         const snap = kind === "photos"
-          ? await api.pullPhotos(serial, files)
-          : await api.pullVideos(serial, files);
+          ? await api.pullPhotos(serial, files, c.flatten)
+          : await api.pullVideos(serial, files, c.flatten);
         backupFinalized = true;
         renderDonePanel(snap);
       } catch (e) {
@@ -187,8 +189,18 @@ export async function mediaView(kind: MediaKind): Promise<HTMLElement> {
         renderFooter();
       }
     };
+    const flattenCb = el("input", { type: "checkbox", checked: c.flatten }) as HTMLInputElement;
+    flattenCb.checked = c.flatten;
+    flattenCb.addEventListener("change", () => { c.flatten = flattenCb.checked; });
+    const flattenLabel = el("label", { class: "pf-flatten", title: `勾选后所有文件直接放在 ${kind === "photos" ? "PHOTO" : "VIDEO"} 根目录，不保留目录结构，便于一次性浏览；同名文件自动加后缀` },
+      flattenCb,
+      el("span", {}, "扁平存放"),
+    );
     footer.replaceChildren(
-      el("span", { class: "pf-summary" }, `已选 ${selCount}/${c.folders.length} 个目录 · ${fmtSize(selSize)}`),
+      el("div", { class: "pf-foot-left" },
+        el("span", { class: "pf-summary" }, `已选 ${selCount}/${c.folders.length} 个目录 · ${fmtSize(selSize)}`),
+        flattenLabel,
+      ),
       pullBtn,
     );
   }
@@ -295,7 +307,7 @@ export async function mediaView(kind: MediaKind): Promise<HTMLElement> {
         scanBtn,
         el("button", { class: "btn btn-ghost btn-sm", onclick: () => void refreshDevices() }, "刷新"),
       ),
-      el("div", { class: "hint-line" }, `扫描后按设备原目录分类列出${word}，默认全选（=全部备份），可取消个别目录。同一应用的多个子目录会归拢为一项（如「酷狗音乐」），点「开始备份」只拉取扫描到的${word}文件（不拉整个目录，避免 .bin 等无关文件）。应用私有目录（Android/data|media|obb）下的内容按应用名归类存放，便于查找；其余按原目录结构存入「备份目录」下的 <设备>/<时间>/${kind === "photos" ? "PHOTO" : "VIDEO"} 子目录，并生成备份记录（仪表盘/查看数据/设备页可见）。备份目录可在设置中改。`),
+      el("div", { class: "hint-line" }, `扫描后按设备原目录分类列出${word}，默认全选（=全部备份），可取消个别目录。同一应用的多个子目录会归拢为一项（如「酷狗音乐」），点「开始备份」只拉取扫描到的${word}文件（不拉整个目录，避免 .bin 等无关文件）。默认按应用名/原目录结构存入「备份目录」下的 <设备>/<时间>/${kind === "photos" ? "PHOTO" : "VIDEO"} 子目录；目录太多时可勾选底部「扁平存放」，所有文件直接放进根目录、不再分层，便于一次性浏览（同名自动加后缀）。并生成备份记录（仪表盘/查看数据/设备页可见）。备份目录可在设置中改。`),
     ),
     folderWrap,
     footer,

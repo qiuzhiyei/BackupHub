@@ -142,15 +142,17 @@ export async function scanVideos(serial: string): Promise<PhotoFolder[]> {
 export async function pullPhotos(
   serial: string,
   files: string[],
+  flatten: boolean,
 ): Promise<BackupSnapshot> {
-  return invoke<BackupSnapshot>("pull_photos", { serial, files });
+  return invoke<BackupSnapshot>("pull_photos", { serial, files, flatten });
 }
 
 export async function pullVideos(
   serial: string,
   files: string[],
+  flatten: boolean,
 ): Promise<BackupSnapshot> {
-  return invoke<BackupSnapshot>("pull_videos", { serial, files });
+  return invoke<BackupSnapshot>("pull_videos", { serial, files, flatten });
 }
 
 export async function setBackupDir(path: string): Promise<string> {

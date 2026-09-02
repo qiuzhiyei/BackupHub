@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -125,6 +125,7 @@ fn scan_media_fs(
 ///
 /// - `files`：设备侧绝对路径（已按扩展名过滤，来自 scan_* 的 PhotoFile.path）
 /// - `tag`：`"PHOTO"` | `"VIDEO"`，同时作为本地子目录名与快照 kind
+/// - `flatten`：true 时全部文件直接放进 dest 根目录（不保留目录结构），便于一次性浏览
 pub fn pull_media_files(
     app: &AppHandle,
     storage: &Storage,
@@ -133,6 +134,7 @@ pub fn pull_media_files(
     files: &[String],
     tag: &str,
     custom_name: &str,
+    flatten: bool,
     cancel: &AtomicBool,
 ) -> Result<BackupSnapshot, String> {
     if files.is_empty() {
@@ -151,7 +153,11 @@ pub fn pull_media_files(
 
     let total = files.len();
     let labels = storage.load_app_labels();
-    let (ok, _total, cancelled) = pull_files_grouped(app, adb, serial, files, &dest, tag, total, &labels, cancel)?;
+    let (ok, _total, cancelled) = if flatten {
+        pull_files_flat(app, adb, serial, files, &dest, tag, total, cancel)?
+    } else {
+        pull_files_grouped(app, adb, serial, files, &dest, tag, total, &labels, cancel)?
+    };
 
     // 取消且一个文件都没拉成 → 不留空快照，直接返回
     if cancelled && ok == 0 {
@@ -346,6 +352,106 @@ fn pull_files_grouped(
     }
 
     Ok((ok, total, false))
+}
+
+/// 扁平拉取：所有文件直接放进 dest 根目录（不保留目录结构），便于一次性浏览全部媒体。
+/// 同名文件自动加 `_N` 后缀避免覆盖。逐文件拉取（取消可即时响应）。
+/// 返回 (成功文件数, 总文件数, 是否取消)。进度经 media://progress 推送。
+fn pull_files_flat(
+    app: &AppHandle,
+    adb: &PathBuf,
+    serial: &str,
+    files: &[String],
+    dest: &Path,
+    tag: &str,
+    total: usize,
+    cancel: &AtomicBool,
+) -> Result<(usize, usize, bool), String> {
+    let stage = if tag == "VIDEO" { "video" } else { "photo" };
+    let mut used: HashSet<String> = HashSet::new();
+    let mut ok = 0usize;
+
+    for (i, f) in files.iter().enumerate() {
+        if cancel.load(Ordering::Relaxed) {
+            return Ok((ok, total, true));
+        }
+        let base = basename(f);
+        let name = dedupe_name(&base, &mut used);
+        let local_path = dest.join(&name);
+        let local_str = local_path.to_string_lossy().to_string();
+
+        let _ = app.emit(
+            "media://progress",
+            ProgressPayload {
+                stage: stage.into(),
+                current: i,
+                total,
+                message: format!("正在拉取 {}（{}/{}）", base, i + 1, total),
+            },
+        );
+
+        let app2 = app;
+        let stage2 = stage;
+        let base2 = base.clone();
+        let i2 = i;
+        let total2 = total;
+        let args: Vec<&str> = vec!["-s", serial, "pull", f.as_str(), &local_str];
+        let res = adb::run_adb_pull_streaming(adb, &args, cancel, |pct, _line| {
+            if let Some(p) = pct {
+                let cur = i2 + (p as usize).min(1);
+                let _ = app2.emit(
+                    "media://progress",
+                    ProgressPayload {
+                        stage: stage2.into(),
+                        current: cur,
+                        total: total2,
+                        message: format!("正在拉取 {} — {}%", base2, p),
+                    },
+                );
+            }
+        });
+        match res {
+            Ok(_) => ok += 1,
+            Err(_) if cancel.load(Ordering::Relaxed) => return Ok((ok, total, true)),
+            Err(e) => {
+                let _ = app.emit(
+                    "media://progress",
+                    ProgressPayload {
+                        stage: "error".into(),
+                        current: i,
+                        total,
+                        message: format!("拉取失败 {}: {}", base, e),
+                    },
+                );
+            }
+        }
+    }
+    Ok((ok, total, false))
+}
+
+/// 在已用名集合内为 base 取一个不冲突的本地文件名（同名加 _N 后缀，保留扩展名）
+fn dedupe_name(base: &str, used: &mut HashSet<String>) -> String {
+    if !used.contains(base) {
+        used.insert(base.to_string());
+        return base.to_string();
+    }
+    let (stem, ext) = split_ext(base);
+    for n in 1.. {
+        let candidate = format!("{}_{}{}", stem, n, ext);
+        if !used.contains(&candidate) {
+            used.insert(candidate.clone());
+            return candidate;
+        }
+    }
+    unreachable!()
+}
+
+/// 拆分文件名为主名与扩展名（含点），无扩展名则 ext 为空
+fn split_ext(name: &str) -> (&str, &str) {
+    match name.rfind('.') {
+        Some(i) if i > 0 => (&name[..i], &name[i..]),
+        _ => (name, ""),
+    }
 }
 
 /// 设备路径相对扫描根 `/storage/emulated/0` 的相对路径，用于本地镜像保留原目录结构。
