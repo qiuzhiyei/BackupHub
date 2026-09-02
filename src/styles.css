@@ -1540,25 +1540,64 @@ body {
   font-size: 13.5px;
   color: var(--text-muted);
 }
-.pf-foot-left {
+.pf-foot-right {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 10px;
   flex-wrap: wrap;
+  justify-content: flex-end;
 }
 .pf-flatten {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   font-size: 13px;
-  color: var(--text);
+  font-weight: 500;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 8px 16px 8px 12px;
   cursor: pointer;
   user-select: none;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.pf-flatten:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+.pf-flatten.on {
+  color: var(--primary);
+  background: var(--surface);
+  border-color: var(--primary);
 }
 .pf-flatten input {
-  width: 15px;
-  height: 15px;
-  cursor: pointer;
+  display: none;
+}
+.pf-flatten-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--border-strong);
+  background: transparent;
+  flex-shrink: 0;
+  transition: background 0.15s, border-color 0.15s;
+  position: relative;
+}
+.pf-flatten.on .pf-flatten-dot {
+  border-color: var(--primary);
+  background: var(--primary);
+}
+.pf-flatten.on .pf-flatten-dot::after {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 1px;
+  width: 4px;
+  height: 7px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
 }
 .photo-progress .progress-fill {
   background: linear-gradient(90deg, #f59e0b 0%, #fbbf24 100%);

@@ -191,17 +191,21 @@ export async function mediaView(kind: MediaKind): Promise<HTMLElement> {
     };
     const flattenCb = el("input", { type: "checkbox", checked: c.flatten }) as HTMLInputElement;
     flattenCb.checked = c.flatten;
-    flattenCb.addEventListener("change", () => { c.flatten = flattenCb.checked; });
-    const flattenLabel = el("label", { class: "pf-flatten", title: `勾选后所有文件直接放在 ${kind === "photos" ? "PHOTO" : "VIDEO"} 根目录，不保留目录结构，便于一次性浏览；同名文件自动加后缀` },
+    const flattenLabel = el("label", { class: `pf-flatten ${c.flatten ? "on" : ""}`, title: `勾选后所有文件直接放在 ${kind === "photos" ? "PHOTO" : "VIDEO"} 根目录，不保留目录结构，便于一次性浏览；同名文件自动加后缀` },
       flattenCb,
+      el("span", { class: "pf-flatten-dot" }),
       el("span", {}, "统一存放"),
     );
+    flattenCb.addEventListener("change", () => {
+      c.flatten = flattenCb.checked;
+      flattenLabel.classList.toggle("on", flattenCb.checked);
+    });
     footer.replaceChildren(
-      el("div", { class: "pf-foot-left" },
-        el("span", { class: "pf-summary" }, `已选 ${selCount}/${c.folders.length} 个目录 · ${fmtSize(selSize)}`),
+      el("span", { class: "pf-summary" }, `已选 ${selCount}/${c.folders.length} 个目录 · ${fmtSize(selSize)}`),
+      el("div", { class: "pf-foot-right" },
         flattenLabel,
+        pullBtn,
       ),
-      pullBtn,
     );
   }
 
