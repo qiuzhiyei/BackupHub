@@ -9,7 +9,7 @@ use crate::adb;
 use crate::backup;
 use crate::models::{
     BackupOptions, BackupSnapshot, Contact, DeviceRecord, DeviceStatus, PageQuery, PageResult,
-    PhotoFolder, Sms, SmsThread,
+    PhotoFile, PhotoFolder, Sms, SmsThread,
 };
 use crate::storage::Storage;
 
@@ -134,7 +134,7 @@ pub async fn pull_photos(
     app: AppHandle,
     state: State<'_, AppState>,
     serial: String,
-    files: Vec<String>,
+    files: Vec<PhotoFile>,
     flatten: bool,
 ) -> Result<BackupSnapshot, String> {
     let adb = resolve_adb(&state)?;
@@ -154,7 +154,7 @@ pub async fn pull_videos(
     app: AppHandle,
     state: State<'_, AppState>,
     serial: String,
-    files: Vec<String>,
+    files: Vec<PhotoFile>,
     flatten: bool,
 ) -> Result<BackupSnapshot, String> {
     let adb = resolve_adb(&state)?;

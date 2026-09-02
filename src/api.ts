@@ -13,6 +13,7 @@ import type {
   DeviceStatus,
   PageQuery,
   PageResult,
+  PhotoFile,
   PhotoFolder,
   ProgressPayload,
   Sms,
@@ -141,7 +142,7 @@ export async function scanVideos(serial: string): Promise<PhotoFolder[]> {
 
 export async function pullPhotos(
   serial: string,
-  files: string[],
+  files: PhotoFile[],
   flatten: boolean,
 ): Promise<BackupSnapshot> {
   return invoke<BackupSnapshot>("pull_photos", { serial, files, flatten });
@@ -149,7 +150,7 @@ export async function pullPhotos(
 
 export async function pullVideos(
   serial: string,
-  files: string[],
+  files: PhotoFile[],
   flatten: boolean,
 ): Promise<BackupSnapshot> {
   return invoke<BackupSnapshot>("pull_videos", { serial, files, flatten });

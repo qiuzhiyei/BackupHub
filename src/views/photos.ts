@@ -155,7 +155,7 @@ export async function mediaView(kind: MediaKind): Promise<HTMLElement> {
       // 只拉扫描到的媒体文件（按扩展名过滤，不拉整个目录，避免 .bin 等无关文件）
       const files = c.folders
         .filter((f) => c.selected.has(f.dir))
-        .flatMap((f) => f.files.map((x) => x.path));
+        .flatMap((f) => f.files);
       if (!files.length) { toast("请至少选择一个目录", "error"); return; }
       backupRunning = true;
       backupFinalized = false;
@@ -175,9 +175,9 @@ export async function mediaView(kind: MediaKind): Promise<HTMLElement> {
         renderDonePanel(snap);
       } catch (e) {
         const msg = String(e);
-        if (msg.includes("已取消")) {
-          toast("已取消", "info");
-          renderProgress({ stage: "cancelled", current: 0, total: 0, message: "已取消" });
+        if (msg.includes("已取消") || msg.includes("设备已断开")) {
+          toast(msg, "info");
+          renderProgress({ stage: "cancelled", current: 0, total: 0, message: msg });
         } else {
           renderProgress({ stage: "error", current: 0, total: 0, message: "拉取失败: " + msg });
           toast("拉取失败: " + msg, "error");

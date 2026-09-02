@@ -15,6 +15,9 @@ const APP_DIRS: &[&str] = &["Android/data/", "Android/media/", "Android/obb/"];
 /// 扫描根（设备内置存储）
 const ROOT_PATH: &str = "/storage/emulated/0";
 
+/// 连续失败达到此阈值即认定设备掉线/异常，自动停止，避免逐文件报错刷屏
+const MAX_CONSEC_FAILS: u32 = 8;
+
 /// 扫描设备相册：文件系统 find + stat（完整，含 Android/data 与 .nomedia 目录，
 /// MediaStore 在 Android 11+ 不索引应用私有目录，会漏）
 pub fn scan_photos(
@@ -123,7 +126,7 @@ fn scan_media_fs(
 /// 按父目录分组批量 adb pull 保留设备原目录结构；完成后创建 BackupSnapshot(kind=tag) 写入索引，
 /// 使仪表盘/查看数据/设备页可见。
 ///
-/// - `files`：设备侧绝对路径（已按扩展名过滤，来自 scan_* 的 PhotoFile.path）
+/// - `files`：设备侧文件（含 size，来自 scan_* 的 PhotoFile，size 用于续传判断）
 /// - `tag`：`"PHOTO"` | `"VIDEO"`，同时作为本地子目录名与快照 kind
 /// - `flatten`：true 时全部文件直接放进 dest 根目录（不保留目录结构），便于一次性浏览
 pub fn pull_media_files(
@@ -131,7 +134,7 @@ pub fn pull_media_files(
     storage: &Storage,
     adb: &PathBuf,
     serial: &str,
-    files: &[String],
+    files: &[PhotoFile],
     tag: &str,
     custom_name: &str,
     flatten: bool,
@@ -153,29 +156,31 @@ pub fn pull_media_files(
 
     let total = files.len();
     let labels = storage.load_app_labels();
-    let (ok, _total, cancelled) = if flatten {
+    let (ok, _total, stop) = if flatten {
         pull_files_flat(app, adb, serial, files, &dest, tag, total, cancel)?
     } else {
         pull_files_grouped(app, adb, serial, files, &dest, tag, total, &labels, cancel)?
     };
-
-    // 取消且一个文件都没拉成 → 不留空快照，直接返回
-    if cancelled && ok == 0 {
-        let _ = app.emit(
-            "media://progress",
-            ProgressPayload {
-                stage: "done".into(),
-                current: 0,
-                total,
-                message: "已取消（未拉取任何文件）".into(),
-            },
-        );
-        return Err("已取消".into());
+    // stop = Some("已取消" | "设备已断开") | None
+    if let Some(reason) = stop {
+        if ok == 0 {
+            let _ = app.emit(
+                "media://progress",
+                ProgressPayload {
+                    stage: "done".into(),
+                    current: 0,
+                    total,
+                    message: format!("{}（未拉取任何文件）", reason),
+                },
+            );
+            return Err(reason.into());
+        }
     }
 
-    // 自动备注：照片/视频备份（N 个[，已取消]）
+    // 自动备注：照片/视频备份（N 个[，已取消/设备已断开]）
     let word = if tag == "VIDEO" { "视频" } else { "照片" };
-    let note = format!("{}备份（{} 个{}）", word, ok, if cancelled { "，已取消" } else { "" });
+    let suffix = stop.map(|r| format!("，{}", r)).unwrap_or_default();
+    let note = format!("{}备份（{} 个{}）", word, ok, suffix);
 
     let meta = BackupSnapshot {
         id,
@@ -199,8 +204,8 @@ pub fn pull_media_files(
             stage: "done".into(),
             current: ok,
             total,
-            message: if cancelled {
-                format!("已取消：成功拉取 {}/{} 个文件到 {}", ok, total, dest_str)
+            message: if let Some(reason) = stop {
+                format!("{}：成功拉取 {}/{} 个文件到 {}", reason, ok, total, dest_str)
             } else {
                 format!("完成：成功拉取 {}/{} 个文件到 {}", ok, total, dest_str)
             },
@@ -210,39 +215,38 @@ pub fn pull_media_files(
 }
 
 /// 按文件父目录分组批量 adb pull，保留原目录结构。
-/// 返回 (成功文件数, 总文件数, 是否取消)。进度经 media://progress 推送。
+/// 返回 (成功文件数, 总文件数, 停止原因: None=正常完成 / Some("已取消"|"设备已断开"))。
+/// 续传：本地已存在且大小一致者跳过；设备掉线（错误匹配或连续失败）自动停止，避免逐文件报错刷屏。
 fn pull_files_grouped(
     app: &AppHandle,
     adb: &PathBuf,
     serial: &str,
-    files: &[String],
+    files: &[PhotoFile],
     dest: &Path,
     tag: &str,
     total: usize,
     labels: &HashMap<String, String>,
     cancel: &AtomicBool,
-) -> Result<(usize, usize, bool), String> {
+) -> Result<(usize, usize, Option<&'static str>), String> {
     let stage = if tag == "VIDEO" { "video" } else { "photo" };
 
     // 按父目录分组
-    let mut groups: HashMap<String, Vec<&str>> = HashMap::new();
+    let mut groups: HashMap<String, Vec<&PhotoFile>> = HashMap::new();
     for f in files {
-        groups.entry(dirname(f)).or_default().push(f.as_str());
+        groups.entry(dirname(&f.path)).or_default().push(f);
     }
-    let mut group_list: Vec<(String, Vec<&str>)> = groups.into_iter().collect();
+    let mut group_list: Vec<(String, Vec<&PhotoFile>)> = groups.into_iter().collect();
     group_list.sort_by(|a, b| a.0.cmp(&b.0));
 
     let mut ok = 0usize;
     let mut done_before = 0usize;
+    let mut consec = 0u32;
 
     for (parent_dir, group_files) in &group_list {
-        // 取消：不再开始新批次的拉取
         if cancel.load(Ordering::Relaxed) {
-            return Ok((ok, total, true));
+            return Ok((ok, total, Some("已取消")));
         }
         let base = basename(parent_dir);
-        // 本地子目录：应用私有目录用应用名替换前缀（Android/data|media|obb/<pkg> → <应用名>），
-        // 其余保留设备原相对结构，便于按应用归类查找
         let rel = local_subpath(parent_dir, labels);
         let local_subdir = if rel.is_empty() {
             dest.to_path_buf()
@@ -254,23 +258,38 @@ fn pull_files_grouped(
         let local_str = local_subdir.to_string_lossy().to_string();
 
         let group_len = group_files.len();
+        // 续传：已存在且大小一致 → 跳过，只拉缺失的
+        let mut missing: Vec<&PhotoFile> = Vec::with_capacity(group_len);
+        for f in group_files {
+            if file_present(&local_subdir.join(basename(&f.path)), f.size) {
+                ok += 1;
+            } else {
+                missing.push(f);
+            }
+        }
+        let missing_len = missing.len();
+        if missing_len == 0 {
+            done_before += group_len;
+            continue;
+        }
+
         let _ = app.emit(
             "media://progress",
             ProgressPayload {
                 stage: stage.into(),
                 current: done_before,
                 total,
-                message: format!("正在拉取 {}（{} 个）", base, group_len),
+                message: format!("正在拉取 {}（{} 个{}）", base, missing_len, if missing_len < group_len { format!("，跳过已存在 {}", group_len - missing_len) } else { String::new() }),
             },
         );
 
-        // 批量拉取：本地目录已存在，adb pull 把各文件按 basename 放入该目录
-        let mut args: Vec<String> = Vec::with_capacity(group_len + 4);
+        // 批量拉取缺失文件
+        let mut args: Vec<String> = Vec::with_capacity(missing_len + 4);
         args.push("-s".into());
         args.push(serial.into());
         args.push("pull".into());
-        for f in group_files {
-            args.push((*f).to_string());
+        for f in &missing {
+            args.push(f.path.clone());
         }
         args.push(local_str.clone());
         let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
@@ -279,7 +298,7 @@ fn pull_files_grouped(
         let stage2 = stage;
         let base2 = base.clone();
         let done2 = done_before;
-        let glen2 = group_len;
+        let glen2 = missing_len;
         let total2 = total;
         let mut last_pct: Option<u32> = None;
         let batch = adb::run_adb_pull_streaming(adb, &arg_refs, cancel, |pct, _line| {
@@ -288,7 +307,6 @@ fn pull_files_grouped(
                     return;
                 }
                 last_pct = Some(p);
-                // 全局进度估算：已完成 + 当前批次内百分比
                 let cur = done2 + ((p as usize) * glen2 / 100).min(glen2);
                 let _ = app2.emit(
                     "media://progress",
@@ -303,19 +321,28 @@ fn pull_files_grouped(
         });
 
         match batch {
-            Ok(_) => ok += group_len,
-            Err(_) => {
-                // 取消致批次中断（adb 子进程已被 kill）→ 直接结束
+            Ok(_) => {
+                ok += missing_len;
+                consec = 0;
+            }
+            Err(e) => {
                 if cancel.load(Ordering::Relaxed) {
-                    return Ok((ok, total, true));
+                    return Ok((ok, total, Some("已取消")));
+                }
+                if is_device_gone(&e) {
+                    return Ok((ok, total, Some("设备已断开")));
+                }
+                consec += 1;
+                if consec >= MAX_CONSEC_FAILS {
+                    return Ok((ok, total, Some("设备已断开")));
                 }
                 // 批次失败（常因单文件无权限致整批非零退出）→ 逐文件回退，尽量抢救可拉取的文件
-                for (gi, f) in group_files.iter().enumerate() {
+                for (gi, f) in missing.iter().enumerate() {
                     if cancel.load(Ordering::Relaxed) {
-                        return Ok((ok, total, true));
+                        return Ok((ok, total, Some("已取消")));
                     }
-                    let f_args: Vec<&str> = vec!["-s", serial, "pull", f, &local_str];
-                    let f_base = basename(f);
+                    let f_args: Vec<&str> = vec!["-s", serial, "pull", f.path.as_str(), &local_str];
+                    let f_base = basename(&f.path);
                     let res = adb::run_adb_pull_streaming(adb, &f_args, cancel, |pct, _line| {
                         if let Some(p) = pct {
                             let cur = done2 + gi + (p as usize).min(1);
@@ -331,8 +358,21 @@ fn pull_files_grouped(
                         }
                     });
                     match res {
-                        Ok(_) => ok += 1,
+                        Ok(_) => {
+                            ok += 1;
+                            consec = 0;
+                        }
                         Err(e) => {
+                            if cancel.load(Ordering::Relaxed) {
+                                return Ok((ok, total, Some("已取消")));
+                            }
+                            if is_device_gone(&e) {
+                                return Ok((ok, total, Some("设备已断开")));
+                            }
+                            consec += 1;
+                            if consec >= MAX_CONSEC_FAILS {
+                                return Ok((ok, total, Some("设备已断开")));
+                            }
                             let _ = app.emit(
                                 "media://progress",
                                 ProgressPayload {
@@ -351,33 +391,41 @@ fn pull_files_grouped(
         done_before += group_len;
     }
 
-    Ok((ok, total, false))
+    Ok((ok, total, None))
 }
 
 /// 扁平拉取：所有文件直接放进 dest 根目录（不保留目录结构），便于一次性浏览全部媒体。
 /// 同名文件自动加 `_N` 后缀避免覆盖。逐文件拉取（取消可即时响应）。
-/// 返回 (成功文件数, 总文件数, 是否取消)。进度经 media://progress 推送。
+/// 续传：本地已存在且大小一致者跳过；设备掉线（错误匹配或连续失败）自动停止。
+/// 返回 (成功文件数, 总文件数, 停止原因: None=完成 / Some("已取消"|"设备已断开"))。
 fn pull_files_flat(
     app: &AppHandle,
     adb: &PathBuf,
     serial: &str,
-    files: &[String],
+    files: &[PhotoFile],
     dest: &Path,
     tag: &str,
     total: usize,
     cancel: &AtomicBool,
-) -> Result<(usize, usize, bool), String> {
+) -> Result<(usize, usize, Option<&'static str>), String> {
     let stage = if tag == "VIDEO" { "video" } else { "photo" };
     let mut used: HashSet<String> = HashSet::new();
     let mut ok = 0usize;
+    let mut consec = 0u32;
 
     for (i, f) in files.iter().enumerate() {
         if cancel.load(Ordering::Relaxed) {
-            return Ok((ok, total, true));
+            return Ok((ok, total, Some("已取消")));
         }
-        let base = basename(f);
+        let base = basename(&f.path);
         let name = dedupe_name(&base, &mut used);
         let local_path = dest.join(&name);
+        // 续传：已存在且大小一致 → 跳过
+        if file_present(&local_path, f.size) {
+            ok += 1;
+            consec = 0;
+            continue;
+        }
         let local_str = local_path.to_string_lossy().to_string();
 
         let _ = app.emit(
@@ -395,7 +443,7 @@ fn pull_files_flat(
         let base2 = base.clone();
         let i2 = i;
         let total2 = total;
-        let args: Vec<&str> = vec!["-s", serial, "pull", f.as_str(), &local_str];
+        let args: Vec<&str> = vec!["-s", serial, "pull", f.path.as_str(), &local_str];
         let res = adb::run_adb_pull_streaming(adb, &args, cancel, |pct, _line| {
             if let Some(p) = pct {
                 let cur = i2 + (p as usize).min(1);
@@ -411,9 +459,21 @@ fn pull_files_flat(
             }
         });
         match res {
-            Ok(_) => ok += 1,
-            Err(_) if cancel.load(Ordering::Relaxed) => return Ok((ok, total, true)),
+            Ok(_) => {
+                ok += 1;
+                consec = 0;
+            }
             Err(e) => {
+                if cancel.load(Ordering::Relaxed) {
+                    return Ok((ok, total, Some("已取消")));
+                }
+                if is_device_gone(&e) {
+                    return Ok((ok, total, Some("设备已断开")));
+                }
+                consec += 1;
+                if consec >= MAX_CONSEC_FAILS {
+                    return Ok((ok, total, Some("设备已断开")));
+                }
                 let _ = app.emit(
                     "media://progress",
                     ProgressPayload {
@@ -426,7 +486,29 @@ fn pull_files_flat(
             }
         }
     }
-    Ok((ok, total, false))
+    Ok((ok, total, None))
+}
+
+/// 判断 adb 错误是否表明设备已掉线/不可用（not found / offline / unauthorized / 无设备），
+/// 一旦命中即整体停止，避免对剩余文件逐个报错刷屏。
+fn is_device_gone(err: &str) -> bool {
+    let e = err.to_lowercase();
+    (e.contains("device") && (e.contains("not found") || e.contains("offline")))
+        || e.contains("no devices")
+        || e.contains("no device")
+        || e.contains("unauthorized")
+        || e.contains("failed to authenticate")
+}
+
+/// 续传判断：本地目标文件已存在且大小与设备端一致 → 视为已拉过，跳过
+fn file_present(path: &Path, size: i64) -> bool {
+    if size <= 0 {
+        return false;
+    }
+    match std::fs::metadata(path) {
+        Ok(m) => m.len() == size as u64,
+        Err(_) => false,
+    }
 }
 
 /// 在已用名集合内为 base 取一个不冲突的本地文件名（同名加 _N 后缀，保留扩展名）
