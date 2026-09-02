@@ -15,9 +15,6 @@ const APP_DIRS: &[&str] = &["Android/data/", "Android/media/", "Android/obb/"];
 /// 扫描根（设备内置存储）
 const ROOT_PATH: &str = "/storage/emulated/0";
 
-/// 连续失败达到此阈值即认定设备掉线/异常，自动停止，避免逐文件报错刷屏
-const MAX_CONSEC_FAILS: u32 = 8;
-
 /// 扫描设备相册：文件系统 find + stat（完整，含 Android/data 与 .nomedia 目录，
 /// MediaStore 在 Android 11+ 不索引应用私有目录，会漏）
 pub fn scan_photos(
@@ -145,14 +142,25 @@ pub fn pull_media_files(
     }
 
     let (model, manufacturer, brand) = backup::fetch_device_info(adb, serial);
-    let now = chrono::Utc::now().timestamp_millis();
-    let id = now.to_string();
-    let label = storage::device_label(&brand, &model, serial);
-    let time = storage::fmt_folder_time(now);
+    // 断点续传：若该设备近 7 天内有被中断的同类型快照，复用其 id/目录接着拉（已拉过的跳过）
+    let resumed = storage.find_interrupted_media(serial, tag);
+    let (id, created_at, dest) = match &resumed {
+        Some(p) => {
+            let label = storage::device_label(&p.device_brand, &p.device_model, &p.device_serial);
+            let time = storage::fmt_folder_time(p.created_at);
+            (p.id.clone(), p.created_at, storage.backup_dir().join(label).join(time).join(tag))
+        }
+        None => {
+            let now = chrono::Utc::now().timestamp_millis();
+            let label = storage::device_label(&brand, &model, serial);
+            let time = storage::fmt_folder_time(now);
+            (now.to_string(), now, storage.backup_dir().join(label).join(time).join(tag))
+        }
+    };
     // 与 storage::snapshot_dir(meta, &meta.kind) 解析到同一目录，故 meta.json 会写入此 dest
-    let dest = storage.backup_dir().join(label).join(time).join(tag);
     std::fs::create_dir_all(&dest).map_err(|e| format!("无法创建目标目录: {}", e))?;
     let dest_str = dest.to_string_lossy().to_string();
+    let is_resume = resumed.is_some();
 
     let total = files.len();
     let labels = storage.load_app_labels();
@@ -177,10 +185,11 @@ pub fn pull_media_files(
         }
     }
 
-    // 自动备注：照片/视频备份（N 个[，已取消/设备已断开]）
+    // 自动备注：照片/视频备份（N 个[，续传][，已取消/设备已断开]）
     let word = if tag == "VIDEO" { "视频" } else { "照片" };
+    let resume_mark = if is_resume { "，续传" } else { "" };
     let suffix = stop.map(|r| format!("，{}", r)).unwrap_or_default();
-    let note = format!("{}备份（{} 个{}）", word, ok, suffix);
+    let note = format!("{}备份（{} 个{}{}）", word, ok, resume_mark, suffix);
 
     let meta = BackupSnapshot {
         id,
@@ -191,7 +200,7 @@ pub fn pull_media_files(
         device_brand: brand,
         custom_name: custom_name.to_string(),
         note,
-        created_at: now,
+        created_at,
         sms_count: 0,
         call_count: 0,
         contact_count: 0,
@@ -240,7 +249,6 @@ fn pull_files_grouped(
 
     let mut ok = 0usize;
     let mut done_before = 0usize;
-    let mut consec = 0u32;
 
     for (parent_dir, group_files) in &group_list {
         if cancel.load(Ordering::Relaxed) {
@@ -323,20 +331,16 @@ fn pull_files_grouped(
         match batch {
             Ok(_) => {
                 ok += missing_len;
-                consec = 0;
             }
-            Err(e) => {
+            Err(_e) => {
                 if cancel.load(Ordering::Relaxed) {
                     return Ok((ok, total, Some("已取消")));
                 }
-                if is_device_gone(&e) {
+                // 拉取失败：先确认设备是否还在线，掉线则整体停止，避免逐文件报错刷屏
+                if !adb::is_device_online(adb, serial) {
                     return Ok((ok, total, Some("设备已断开")));
                 }
-                consec += 1;
-                if consec >= MAX_CONSEC_FAILS {
-                    return Ok((ok, total, Some("设备已断开")));
-                }
-                // 批次失败（常因单文件无权限致整批非零退出）→ 逐文件回退，尽量抢救可拉取的文件
+                // 设备仍在线 → 多为单文件无权限致整批非零退出，逐文件回退尽量抢救
                 for (gi, f) in missing.iter().enumerate() {
                     if cancel.load(Ordering::Relaxed) {
                         return Ok((ok, total, Some("已取消")));
@@ -360,17 +364,12 @@ fn pull_files_grouped(
                     match res {
                         Ok(_) => {
                             ok += 1;
-                            consec = 0;
                         }
                         Err(e) => {
                             if cancel.load(Ordering::Relaxed) {
                                 return Ok((ok, total, Some("已取消")));
                             }
-                            if is_device_gone(&e) {
-                                return Ok((ok, total, Some("设备已断开")));
-                            }
-                            consec += 1;
-                            if consec >= MAX_CONSEC_FAILS {
+                            if !adb::is_device_online(adb, serial) {
                                 return Ok((ok, total, Some("设备已断开")));
                             }
                             let _ = app.emit(
@@ -411,7 +410,6 @@ fn pull_files_flat(
     let stage = if tag == "VIDEO" { "video" } else { "photo" };
     let mut used: HashSet<String> = HashSet::new();
     let mut ok = 0usize;
-    let mut consec = 0u32;
 
     for (i, f) in files.iter().enumerate() {
         if cancel.load(Ordering::Relaxed) {
@@ -423,7 +421,6 @@ fn pull_files_flat(
         // 续传：已存在且大小一致 → 跳过
         if file_present(&local_path, f.size) {
             ok += 1;
-            consec = 0;
             continue;
         }
         let local_str = local_path.to_string_lossy().to_string();
@@ -461,17 +458,13 @@ fn pull_files_flat(
         match res {
             Ok(_) => {
                 ok += 1;
-                consec = 0;
             }
             Err(e) => {
                 if cancel.load(Ordering::Relaxed) {
                     return Ok((ok, total, Some("已取消")));
                 }
-                if is_device_gone(&e) {
-                    return Ok((ok, total, Some("设备已断开")));
-                }
-                consec += 1;
-                if consec >= MAX_CONSEC_FAILS {
+                // 拉取失败：确认设备是否还在线，掉线则整体停止
+                if !adb::is_device_online(adb, serial) {
                     return Ok((ok, total, Some("设备已断开")));
                 }
                 let _ = app.emit(
@@ -487,17 +480,6 @@ fn pull_files_flat(
         }
     }
     Ok((ok, total, None))
-}
-
-/// 判断 adb 错误是否表明设备已掉线/不可用（not found / offline / unauthorized / 无设备），
-/// 一旦命中即整体停止，避免对剩余文件逐个报错刷屏。
-fn is_device_gone(err: &str) -> bool {
-    let e = err.to_lowercase();
-    (e.contains("device") && (e.contains("not found") || e.contains("offline")))
-        || e.contains("no devices")
-        || e.contains("no device")
-        || e.contains("unauthorized")
-        || e.contains("failed to authenticate")
 }
 
 /// 续传判断：本地目标文件已存在且大小与设备端一致 → 视为已拉过，跳过

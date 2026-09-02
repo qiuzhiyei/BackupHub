@@ -215,6 +215,24 @@ impl Storage {
         Some(self.snapshot_dir(&meta, &meta.kind).to_string_lossy().to_string())
     }
 
+    /// 查找该设备最近 7 天内、同类型（PHOTO/VIDEO）且被中断（备注含「设备已断开」或「已取消」）的最新快照，
+    /// 用于断点续传：复用其 id 与目录继续拉取。
+    pub fn find_interrupted_media(&self, serial: &str, tag: &str) -> Option<BackupSnapshot> {
+        let cutoff = chrono::Utc::now().timestamp_millis() - 7 * 24 * 3600 * 1000;
+        let mut snaps: Vec<BackupSnapshot> = self
+            .load_snapshots()
+            .into_iter()
+            .filter(|s| {
+                s.kind == tag
+                    && s.device_serial == serial
+                    && s.created_at >= cutoff
+                    && (s.note.contains("设备已断开") || s.note.contains("已取消"))
+            })
+            .collect();
+        snaps.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        snaps.into_iter().next()
+    }
+
     // ---------- 应用名映射 ----------
     /// 应用名映射文件：<备份根>/app_labels.json（包名 → 友好名，用户可编辑覆盖默认）
     fn app_labels_path(&self) -> PathBuf {

@@ -77,6 +77,15 @@ fn common_adb_candidates() -> Vec<PathBuf> {
     v
 }
 
+/// 设备是否在线：`adb -s <serial> get-state` 返回 "device" 视为在线。
+/// 用于拉取失败后可靠判断设备是否已掉线（不依赖错误文案/失败次数）。
+pub fn is_device_online(adb: &PathBuf, serial: &str) -> bool {
+    match run_adb(adb, &["-s", serial, "get-state"]) {
+        Ok(s) => s.trim() == "device",
+        Err(_) => false,
+    }
+}
+
 /// 执行 adb 命令并返回 stdout
 pub fn run_adb(adb: &PathBuf, args: &[&str]) -> Result<String, String> {
     let mut cmd = Command::new(adb);
