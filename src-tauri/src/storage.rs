@@ -175,18 +175,13 @@ impl Storage {
     /// 保存媒体备份快照（PHOTO/VIDEO）：媒体文件已由调用方拉取到
     /// `<备份根>/<设备>/<时间>/<kind>` 目录，此处仅写 meta.json 并登记到
     /// index.json / devices.json，使仪表盘/查看数据/设备页可见。
-    /// ok/total 落库到 media_count/media_total，用于断点续传判断（未完成即可续）。
     pub fn save_media_snapshot(
         &self,
         mut meta: BackupSnapshot,
-        ok: usize,
-        total: usize,
     ) -> Result<BackupSnapshot, String> {
         meta.sms_count = 0;
         meta.call_count = 0;
         meta.contact_count = 0;
-        meta.media_count = ok;
-        meta.media_total = total;
 
         let dir = self.snapshot_dir(&meta, &meta.kind);
         fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
@@ -216,25 +211,6 @@ impl Storage {
     pub fn snapshot_path(&self, id: &str) -> Option<String> {
         let meta = self.get_snapshot(id)?;
         Some(self.snapshot_dir(&meta, &meta.kind).to_string_lossy().to_string())
-    }
-
-    /// 查找该设备最近 7 天内、同类型（PHOTO/VIDEO）且**未完成**（media_count < media_total）的最新快照，
-    /// 用于断点续传：复用其 id 与目录继续拉取。按实际完成度判断，不依赖备注标记（检测失败也能续传）。
-    pub fn find_interrupted_media(&self, serial: &str, tag: &str) -> Option<BackupSnapshot> {
-        let cutoff = chrono::Utc::now().timestamp_millis() - 7 * 24 * 3600 * 1000;
-        let mut snaps: Vec<BackupSnapshot> = self
-            .load_snapshots()
-            .into_iter()
-            .filter(|s| {
-                s.kind == tag
-                    && s.device_serial == serial
-                    && s.created_at >= cutoff
-                    && s.media_total > 0
-                    && s.media_count < s.media_total
-            })
-            .collect();
-        snaps.sort_by(|a, b| b.created_at.cmp(&a.created_at));
-        snaps.into_iter().next()
     }
 
     // ---------- 应用名映射 ----------

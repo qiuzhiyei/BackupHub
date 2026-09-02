@@ -126,8 +126,6 @@ pub fn perform_backup(
         sms_count: 0,
         call_count: 0,
         contact_count: 0,
-        media_count: 0,
-        media_total: 0,
     };
 
     let saved = storage.save_snapshot(meta, &sms_list, &call_list, &contact_list)?;

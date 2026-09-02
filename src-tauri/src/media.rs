@@ -142,39 +142,17 @@ pub fn pull_media_files(
     }
 
     let (model, manufacturer, brand) = backup::fetch_device_info(adb, serial);
-    // 断点续传：若该设备近 7 天内有被中断的同类型快照，复用其 id/目录接着拉（已拉过的跳过）
-    let resumed = storage.find_interrupted_media(serial, tag);
-    let (id, created_at, dest) = match &resumed {
-        Some(p) => {
-            let label = storage::device_label(&p.device_brand, &p.device_model, &p.device_serial);
-            let time = storage::fmt_folder_time(p.created_at);
-            (p.id.clone(), p.created_at, storage.backup_dir().join(label).join(time).join(tag))
-        }
-        None => {
-            let now = chrono::Utc::now().timestamp_millis();
-            let label = storage::device_label(&brand, &model, serial);
-            let time = storage::fmt_folder_time(now);
-            (now.to_string(), now, storage.backup_dir().join(label).join(time).join(tag))
-        }
-    };
+    let now = chrono::Utc::now().timestamp_millis();
+    let id = now.to_string();
+    let label = storage::device_label(&brand, &model, serial);
+    let time = storage::fmt_folder_time(now);
     // 与 storage::snapshot_dir(meta, &meta.kind) 解析到同一目录，故 meta.json 会写入此 dest
+    let dest = storage.backup_dir().join(label).join(time).join(tag);
     std::fs::create_dir_all(&dest).map_err(|e| format!("无法创建目标目录: {}", e))?;
     let dest_str = dest.to_string_lossy().to_string();
-    let is_resume = resumed.is_some();
 
     let total = files.len();
     let labels = storage.load_app_labels();
-    if is_resume {
-        let _ = app.emit(
-            "media://progress",
-            ProgressPayload {
-                stage: (if tag == "VIDEO" { "video" } else { "photo" }).into(),
-                current: 0,
-                total,
-                message: "续传上次中断的备份：跳过已拉过的文件，继续拉取剩余…".into(),
-            },
-        );
-    }
     let (ok, _total, stop) = if flatten {
         pull_files_flat(app, adb, serial, files, &dest, tag, total, cancel)?
     } else {
@@ -196,11 +174,10 @@ pub fn pull_media_files(
         }
     }
 
-    // 自动备注：照片/视频备份（N 个[，续传][，已取消/设备已断开]）
+    // 自动备注：照片/视频备份（N 个[，已取消/设备已断开]）
     let word = if tag == "VIDEO" { "视频" } else { "照片" };
-    let resume_mark = if is_resume { "，续传" } else { "" };
     let suffix = stop.map(|r| format!("，{}", r)).unwrap_or_default();
-    let note = format!("{}备份（{} 个{}{}）", word, ok, resume_mark, suffix);
+    let note = format!("{}备份（{} 个{}）", word, ok, suffix);
 
     let meta = BackupSnapshot {
         id,
@@ -211,14 +188,12 @@ pub fn pull_media_files(
         device_brand: brand,
         custom_name: custom_name.to_string(),
         note,
-        created_at,
+        created_at: now,
         sms_count: 0,
         call_count: 0,
         contact_count: 0,
-        media_count: 0,
-        media_total: 0,
     };
-    let saved = storage.save_media_snapshot(meta, ok, total)?;
+    let saved = storage.save_media_snapshot(meta)?;
 
     let _ = app.emit(
         "media://progress",
@@ -279,37 +254,22 @@ fn pull_files_grouped(
         let local_str = local_subdir.to_string_lossy().to_string();
 
         let group_len = group_files.len();
-        // 续传：已存在且大小一致 → 跳过，只拉缺失的
-        let mut missing: Vec<&PhotoFile> = Vec::with_capacity(group_len);
-        for f in group_files {
-            if file_present(&local_subdir.join(basename(&f.path)), f.size) {
-                ok += 1;
-            } else {
-                missing.push(f);
-            }
-        }
-        let missing_len = missing.len();
-        if missing_len == 0 {
-            done_before += group_len;
-            continue;
-        }
-
         let _ = app.emit(
             "media://progress",
             ProgressPayload {
                 stage: stage.into(),
                 current: done_before,
                 total,
-                message: format!("正在拉取 {}（{} 个{}）", base, missing_len, if missing_len < group_len { format!("，跳过已存在 {}", group_len - missing_len) } else { String::new() }),
+                message: format!("正在拉取 {}（{} 个）", base, group_len),
             },
         );
 
-        // 批量拉取缺失文件
-        let mut args: Vec<String> = Vec::with_capacity(missing_len + 4);
+        // 批量拉取：本地目录已存在，adb pull 把各文件按 basename 放入该目录
+        let mut args: Vec<String> = Vec::with_capacity(group_len + 4);
         args.push("-s".into());
         args.push(serial.into());
         args.push("pull".into());
-        for f in &missing {
+        for f in group_files {
             args.push(f.path.clone());
         }
         args.push(local_str.clone());
@@ -319,7 +279,7 @@ fn pull_files_grouped(
         let stage2 = stage;
         let base2 = base.clone();
         let done2 = done_before;
-        let glen2 = missing_len;
+        let glen2 = group_len;
         let total2 = total;
         let mut last_pct: Option<u32> = None;
         let batch = adb::run_adb_pull_streaming(adb, &arg_refs, cancel, |pct, _line| {
@@ -343,7 +303,7 @@ fn pull_files_grouped(
 
         match batch {
             Ok(_) => {
-                ok += missing_len;
+                ok += group_len;
             }
             Err(_e) => {
                 if cancel.load(Ordering::Relaxed) {
@@ -354,7 +314,7 @@ fn pull_files_grouped(
                     return Ok((ok, total, Some("设备已断开")));
                 }
                 // 设备仍在线 → 多为单文件无权限致整批非零退出，逐文件回退尽量抢救
-                for (gi, f) in missing.iter().enumerate() {
+                for (gi, f) in group_files.iter().enumerate() {
                     if cancel.load(Ordering::Relaxed) {
                         return Ok((ok, total, Some("已取消")));
                     }
@@ -432,10 +392,6 @@ fn pull_files_flat(
         let name = dedupe_name(&base, &mut used);
         let local_path = dest.join(&name);
         // 续传：已存在且大小一致 → 跳过
-        if file_present(&local_path, f.size) {
-            ok += 1;
-            continue;
-        }
         let local_str = local_path.to_string_lossy().to_string();
 
         let _ = app.emit(
@@ -493,17 +449,6 @@ fn pull_files_flat(
         }
     }
     Ok((ok, total, None))
-}
-
-/// 续传判断：本地目标文件已存在且大小与设备端一致 → 视为已拉过，跳过
-fn file_present(path: &Path, size: i64) -> bool {
-    if size <= 0 {
-        return false;
-    }
-    match std::fs::metadata(path) {
-        Ok(m) => m.len() == size as u64,
-        Err(_) => false,
-    }
 }
 
 /// 在已用名集合内为 base 取一个不冲突的本地文件名（同名加 _N 后缀，保留扩展名）

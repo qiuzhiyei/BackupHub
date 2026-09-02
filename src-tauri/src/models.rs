@@ -83,12 +83,6 @@ pub struct BackupSnapshot {
     pub sms_count: usize,
     pub call_count: usize,
     pub contact_count: usize,
-    /// 媒体备份：成功拉取文件数 / 总文件数（COMM 快照为 0/0）。
-    /// media_count < media_total 表示未完成（可断点续传），与备注标记无关，检测失败也能续传。
-    #[serde(default)]
-    pub media_count: usize,
-    #[serde(default)]
-    pub media_total: usize,
 }
 
 /// BackupSnapshot.kind 的反序列化默认值：旧索引无 kind 字段时视为 COMM 备份
