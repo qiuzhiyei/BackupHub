@@ -167,17 +167,30 @@ pub fn pull_media_files(
                     stage: "done".into(),
                     current: 0,
                     total,
-                    message: format!("{}（未拉取任何文件）", reason),
+                    message: format!("失败：{}，未拉取任何文件", reason),
                 },
             );
             return Err(reason.into());
         }
     }
 
-    // 自动备注：照片/视频备份（N 个[，已取消/设备已断开]）
+    // 完成度判断：只有全部拉成才算「完成」；断开/取消/部分失败一律标失败或未完成，
+    // 绝不显示「完成」——避免用户走开回来误以为成功。
     let word = if tag == "VIDEO" { "视频" } else { "照片" };
-    let suffix = stop.map(|r| format!("，{}", r)).unwrap_or_default();
-    let note = format!("{}备份（{} 个{}）", word, ok, suffix);
+    let (note, done_msg) = if stop.is_none() && ok == total {
+        (format!("{}备份（{} 个）", word, ok),
+         format!("完成：成功拉取 {}/{} 个文件到 {}", ok, total, dest_str))
+    } else if stop == Some("已取消") {
+        (format!("{}备份（{} 个，已取消）", word, ok),
+         format!("已取消：已拉取 {}/{} 个文件", ok, total))
+    } else if stop == Some("设备已断开") {
+        (format!("{}备份失败（{}/{} 个，设备已断开）", word, ok, total),
+         format!("失败：设备已断开，已拉取 {}/{} 个文件", ok, total))
+    } else {
+        // stop 为空但 ok<total：设备仍在线，部分文件拉取失败
+        (format!("{}备份未完成（{}/{} 个，部分文件失败）", word, ok, total),
+         format!("未完成：已拉取 {}/{} 个文件（部分失败）", ok, total))
+    };
 
     let meta = BackupSnapshot {
         id,
@@ -201,11 +214,7 @@ pub fn pull_media_files(
             stage: "done".into(),
             current: ok,
             total,
-            message: if let Some(reason) = stop {
-                format!("{}：成功拉取 {}/{} 个文件到 {}", reason, ok, total, dest_str)
-            } else {
-                format!("完成：成功拉取 {}/{} 个文件到 {}", ok, total, dest_str)
-            },
+            message: done_msg,
         },
     );
     Ok(saved)

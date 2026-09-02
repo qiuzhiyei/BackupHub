@@ -175,9 +175,12 @@ export async function mediaView(kind: MediaKind): Promise<HTMLElement> {
         renderDonePanel(snap);
       } catch (e) {
         const msg = String(e);
-        if (msg.includes("已取消") || msg.includes("设备已断开")) {
-          toast(msg, "info");
-          renderProgress({ stage: "cancelled", current: 0, total: 0, message: msg });
+        if (msg.includes("设备已断开")) {
+          toast("备份失败：" + msg, "error");
+          renderProgress({ stage: "failed", current: 0, total: 0, message: msg });
+        } else if (msg.includes("已取消")) {
+          toast("已取消", "info");
+          renderProgress({ stage: "cancelled", current: 0, total: 0, message: "已取消" });
         } else {
           renderProgress({ stage: "error", current: 0, total: 0, message: "拉取失败: " + msg });
           toast("拉取失败: " + msg, "error");
@@ -213,10 +216,12 @@ export async function mediaView(kind: MediaKind): Promise<HTMLElement> {
     // 完成态由 renderDonePanel 负责渲染；进行中事件到达即刷新，防止覆盖完成面板
     if (backupFinalized || p.stage === "done") return;
     const pct = p.total > 0 ? Math.round((p.current / p.total) * 100) : 0;
+    const failed = p.stage === "failed";
     const err = p.stage === "error";
     const cancelled = p.stage === "cancelled";
+    const terminal = failed || cancelled;
     const actions: HTMLElement[] = [];
-    if (!cancelled) {
+    if (!terminal) {
       const cancelBtn = el("button", { class: "btn btn-ghost btn-sm", disabled: cancelling }, cancelling ? "取消中…" : "取消备份");
       cancelBtn.onclick = async () => {
         if (cancelling) return;
@@ -227,31 +232,44 @@ export async function mediaView(kind: MediaKind): Promise<HTMLElement> {
       };
       actions.push(cancelBtn);
     }
+    const title = failed ? "拉取失败" : cancelled ? "已取消" : err ? "拉取出错" : "拉取进度";
+    const badgeCls = failed ? "badge-err" : cancelled ? "badge-warn" : err ? "badge-err" : "badge-info";
+    const badgeTxt = failed ? "失败" : cancelled ? "已取消" : err ? "错误" : "进行中";
+    const fillCls = failed ? " fail" : cancelled ? " warn" : "";
+    const pctCls = failed ? " fail" : cancelled ? " warn" : "";
     progressPanel.replaceChildren(
-      el("div", { class: "panel-head" }, el("h3", {}, cancelled ? "已取消" : err ? "拉取出错" : "拉取进度")),
+      el("div", { class: "panel-head" }, el("h3", {}, title)),
       el("div", { class: "progress-stage" },
-        el("span", { class: `badge ${cancelled ? "badge-warn" : err ? "badge-err" : "badge-info"}` }, cancelled ? "已取消" : err ? "错误" : "进行中"),
+        el("span", { class: `badge ${badgeCls}` }, badgeTxt),
         el("div", { class: "progress-right" },
-          el("span", { class: `progress-pct${cancelled ? " done" : ""}` }, `${cancelled ? 100 : pct}%`),
+          el("span", { class: `progress-pct${pctCls}` }, `${terminal ? 100 : pct}%`),
           el("span", { class: "progress-count" }, p.total > 0 ? `${p.current} / ${p.total} 个文件` : ""),
         ),
       ),
-      el("div", { class: "progress-bar" }, el("div", { class: `progress-fill${cancelled ? " done" : ""}`, style: { width: `${cancelled ? 100 : pct}%` } })),
+      el("div", { class: "progress-bar" }, el("div", { class: `progress-fill${fillCls}`, style: { width: `${terminal ? 100 : pct}%` } })),
       el("div", { class: "progress-msg" }, p.message),
       el("div", { class: "progress-actions" }, ...actions),
     );
   }
 
   function renderDonePanel(snap: BackupSnapshot) {
+    // 备注含失败/未完成/设备已断开 → 失败（红）；已取消 → 黄；否则完成（绿）。绝不把中断显示成「完成」。
+    const failed = /失败|未完成|设备已断开/.test(snap.note);
+    const cancelled = !failed && snap.note.includes("已取消");
+    const title = failed ? "拉取失败" : cancelled ? "已取消" : "拉取完成";
+    const badgeCls = failed ? "badge-err" : cancelled ? "badge-warn" : "badge-ok";
+    const badgeTxt = failed ? "失败" : cancelled ? "已取消" : "完成";
+    const fillCls = failed ? " fail" : cancelled ? " warn" : " done";
+    const pctCls = failed ? " fail" : cancelled ? " warn" : " done";
     progressPanel.replaceChildren(
-      el("div", { class: "panel-head" }, el("h3", {}, "拉取完成")),
+      el("div", { class: "panel-head" }, el("h3", {}, title)),
       el("div", { class: "progress-stage" },
-        el("span", { class: "badge badge-ok" }, "完成"),
+        el("span", { class: `badge ${badgeCls}` }, badgeTxt),
         el("div", { class: "progress-right" },
-          el("span", { class: "progress-pct done" }, "100%"),
+          el("span", { class: `progress-pct${pctCls}` }, "100%"),
         ),
       ),
-      el("div", { class: "progress-bar" }, el("div", { class: "progress-fill done", style: { width: "100%" } })),
+      el("div", { class: "progress-bar" }, el("div", { class: `progress-fill${fillCls}`, style: { width: "100%" } })),
       el("div", { class: "progress-msg" }, snap.note || "备份完成"),
       el("div", { class: "progress-actions" },
         el("button", { class: "btn btn-primary btn-sm", onclick: async () => {
