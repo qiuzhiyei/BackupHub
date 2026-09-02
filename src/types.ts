@@ -52,6 +52,9 @@ export interface BackupSnapshot {
   sms_count: number;
   call_count: number;
   contact_count: number;
+  /** 媒体备份：成功数 / 总数；count<total 表示未完成可续传 */
+  media_count: number;
+  media_total: number;
 }
 
 export interface ProgressPayload {

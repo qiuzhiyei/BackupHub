@@ -164,6 +164,17 @@ pub fn pull_media_files(
 
     let total = files.len();
     let labels = storage.load_app_labels();
+    if is_resume {
+        let _ = app.emit(
+            "media://progress",
+            ProgressPayload {
+                stage: (if tag == "VIDEO" { "video" } else { "photo" }).into(),
+                current: 0,
+                total,
+                message: "续传上次中断的备份：跳过已拉过的文件，继续拉取剩余…".into(),
+            },
+        );
+    }
     let (ok, _total, stop) = if flatten {
         pull_files_flat(app, adb, serial, files, &dest, tag, total, cancel)?
     } else {
@@ -204,8 +215,10 @@ pub fn pull_media_files(
         sms_count: 0,
         call_count: 0,
         contact_count: 0,
+        media_count: 0,
+        media_total: 0,
     };
-    let saved = storage.save_media_snapshot(meta, ok)?;
+    let saved = storage.save_media_snapshot(meta, ok, total)?;
 
     let _ = app.emit(
         "media://progress",
