@@ -116,6 +116,7 @@ pub fn run_adb_pull_streaming(
 
     let mut buf = String::new();
     let mut chunk = [0u8; 2048];
+    let mut last_line = String::new();
     loop {
         // 取消：立即杀死 adb 子进程，停止当前拉取
         if cancel.load(Ordering::Relaxed) {
@@ -141,6 +142,7 @@ pub fn run_adb_pull_streaming(
             if line.is_empty() {
                 continue;
             }
+            last_line = line.to_string();
             let pct = extract_percent(line);
             on_progress(pct, line);
         }
@@ -148,7 +150,12 @@ pub fn run_adb_pull_streaming(
 
     let status = child.wait().map_err(|e| e.to_string())?;
     if !status.success() {
-        return Err(format!("adb 拉取未成功（退出码 {}）", status.code().unwrap_or(-1)));
+        let detail = last_line.trim();
+        return Err(if detail.is_empty() {
+            format!("adb 拉取未成功（退出码 {}）", status.code().unwrap_or(-1))
+        } else {
+            format!("adb 拉取未成功（退出码 {}）: {}", status.code().unwrap_or(-1), detail)
+        });
     }
     Ok(())
 }
