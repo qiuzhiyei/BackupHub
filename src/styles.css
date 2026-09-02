@@ -41,6 +41,11 @@
 body {
   margin: 0;
   min-height: 100vh;
+  background: var(--bg);
+  background-image:
+    radial-gradient(1100px 520px at 100% -6%, rgba(99, 102, 241, 0.07), transparent 60%),
+    radial-gradient(900px 480px at -6% 4%, rgba(6, 182, 212, 0.05), transparent 58%);
+  background-attachment: fixed;
 }
 
 .app {
@@ -51,7 +56,9 @@ body {
 
 /* ---------- 侧边栏 ---------- */
 .sidebar {
-  background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
+  background:
+    radial-gradient(440px 240px at -4% -4%, rgba(99, 102, 241, 0.12), transparent 70%),
+    linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
   color: #cbd5e1;
   display: flex;
   flex-direction: column;
@@ -68,13 +75,15 @@ body {
   padding: 6px 8px 20px;
 }
 .brand-logo {
-  font-size: 28px;
+  font-size: 26px;
   width: 46px;
   height: 46px;
   display: grid;
   place-items: center;
-  background: rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.22) 0%, rgba(79, 70, 229, 0.10) 100%);
+  border: 1px solid rgba(99, 102, 241, 0.30);
+  border-radius: 13px;
+  box-shadow: 0 4px 14px rgba(79, 70, 229, 0.20);
 }
 .brand-title {
   font-size: 19px;
@@ -140,7 +149,9 @@ body {
   align-items: center;
   justify-content: space-between;
   padding: 16px 28px;
-  background: var(--surface);
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: saturate(180%) blur(14px);
+  -webkit-backdrop-filter: saturate(180%) blur(14px);
   border-bottom: 1px solid var(--border);
   position: sticky;
   top: 0;
@@ -323,7 +334,7 @@ body {
   gap: 14px;
 }
 .card:hover {
-  box-shadow: var(--shadow);
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.10);
   transform: translateY(-2px);
   border-color: var(--border-strong);
 }
@@ -375,8 +386,8 @@ body {
 .card-stats {
   display: flex;
   gap: 10px;
-  padding-top: 4px;
-  border-top: 1px dashed var(--border);
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
 }
 .mini-stat {
   font-size: 13px;
@@ -454,12 +465,23 @@ body {
   box-shadow: 0 4px 12px rgba(79, 70, 229, 0.25);
 }
 .btn-primary:hover {
-  background: var(--primary-hover);
+  background: linear-gradient(135deg, var(--primary-hover) 0%, #4338ca 100%);
+  box-shadow: 0 6px 18px rgba(79, 70, 229, 0.32);
   border-color: transparent;
+}
+.btn:focus-visible,
+.nav-link:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
 }
 .btn-ghost {
   background: var(--surface-2);
   border-color: var(--border);
+}
+.btn-ghost:hover {
+  background: var(--primary-soft);
+  color: var(--primary);
 }
 .btn-danger-ghost {
   background: var(--err-soft);
@@ -1740,6 +1762,11 @@ body {
   padding: 30px;
   text-align: center;
   color: var(--text-muted);
+  animation: loading-pulse 1.5s ease-in-out infinite;
+}
+@keyframes loading-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
 }
 
 /* ---------- 模态 ---------- */
