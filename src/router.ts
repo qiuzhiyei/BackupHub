@@ -7,6 +7,7 @@ import { dataView } from "./views/data";
 import { mediaView } from "./views/photos";
 import { settingsView } from "./views/settings";
 import { clear } from "./dom";
+import { renderIcons } from "./icons";
 
 export interface RouteParams {
   params: Record<string, string>;
@@ -80,6 +81,7 @@ export async function render(): Promise<void> {
     const content = await matched({ params, query });
     clear(view);
     view.appendChild(content);
+    renderIcons();
   } catch (err) {
     clear(view);
     const box = document.createElement("div");

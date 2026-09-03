@@ -1,33 +1,56 @@
 import { el, toast } from "./dom";
 import { startRouter } from "./router";
+import { renderIcons } from "./icons";
 import * as api from "./api";
 import type { ProgressPayload } from "./types";
 
+const THEME_KEY = "backuphub-theme";
+
+function applyTheme(theme: "light" | "dark"): void {
+  document.documentElement.dataset.theme = theme;
+}
+function initTheme(): void {
+  const saved = (localStorage.getItem(THEME_KEY) as "light" | "dark" | null) ?? "light";
+  applyTheme(saved);
+}
+
 function buildShell(): void {
+  const themeBtn = el("button", { class: "topbar-icon-btn", title: "切换深/浅色" },
+    el("i", { class: "nav-ico", "data-lucide": "sun-moon" }),
+  );
+  themeBtn.addEventListener("click", () => {
+    const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+    applyTheme(next);
+    localStorage.setItem(THEME_KEY, next);
+    renderIcons();
+  });
   const app = el("div", { class: "app" },
     el("aside", { class: "sidebar" },
       el("div", { class: "brand" },
-        el("div", { class: "brand-logo" }, "📱"),
+        el("div", { class: "brand-logo" }, el("i", { "data-lucide": "hard-drive-download" })),
         el("div", { class: "brand-text" },
           el("div", { class: "brand-title" }, "BackupHub"),
           el("div", { class: "brand-sub" }, "安卓数据备份助手"),
         ),
       ),
       el("nav", { class: "nav" },
-        el("a", { class: "nav-link", href: "#/" }, el("span", { class: "nav-ico" }, "📊"), "仪表盘"),
-        el("a", { class: "nav-link", href: "#/backup" }, el("span", { class: "nav-ico" }, "💾"), "短信/通话/通讯录备份"),
-        el("a", { class: "nav-link", href: "#/photos" }, el("span", { class: "nav-ico" }, "🖼️"), "照片备份"),
-        el("a", { class: "nav-link", href: "#/videos" }, el("span", { class: "nav-ico" }, "🎬"), "视频备份"),
-        el("a", { class: "nav-link", href: "#/data" }, el("span", { class: "nav-ico" }, "📂"), "查看数据"),
-        el("a", { class: "nav-link", href: "#/devices" }, el("span", { class: "nav-ico" }, "📱"), "设备"),
-        el("a", { class: "nav-link", href: "#/settings" }, el("span", { class: "nav-ico" }, "⚙️"), "设置"),
+        el("a", { class: "nav-link", href: "#/" }, el("span", { class: "nav-ico", "data-lucide": "layout-dashboard" }), "仪表盘"),
+        el("a", { class: "nav-link", href: "#/backup" }, el("span", { class: "nav-ico", "data-lucide": "messages-square" }), "短信/通话/通讯录备份"),
+        el("a", { class: "nav-link", href: "#/photos" }, el("span", { class: "nav-ico", "data-lucide": "image" }), "照片备份"),
+        el("a", { class: "nav-link", href: "#/videos" }, el("span", { class: "nav-ico", "data-lucide": "video" }), "视频备份"),
+        el("a", { class: "nav-link", href: "#/data" }, el("span", { class: "nav-ico", "data-lucide": "database" }), "查看数据"),
+        el("a", { class: "nav-link", href: "#/devices" }, el("span", { class: "nav-ico", "data-lucide": "smartphone" }), "设备"),
+        el("a", { class: "nav-link", href: "#/settings" }, el("span", { class: "nav-ico", "data-lucide": "settings" }), "设置"),
       ),
       el("div", { class: "sidebar-foot" }, "v0.1.0 · qiuzhiye"),
     ),
     el("main", { class: "main" },
       el("header", { class: "topbar" },
         el("div", { class: "topbar-title" }, "BackupHub"),
-        el("div", { class: "topbar-status" }, "ADB: 检测中…"),
+        el("div", { class: "topbar-right" },
+          themeBtn,
+          el("div", { class: "topbar-status" }, "ADB: 检测中…"),
+        ),
       ),
       el("section", { id: "view" }),
       el("div", { class: "taskbar", style: { display: "none" } }),
@@ -54,11 +77,11 @@ function setupTaskProgress(): void {
     return "";
   };
   const iconFor = (g: string): string => {
-    if (g === "scan") return "🔍";
-    if (g === "pull-photo") return "🖼️";
-    if (g === "pull-video") return "🎬";
-    if (g === "backup") return "💾";
-    return "⏳";
+    if (g === "scan") return "search";
+    if (g === "pull-photo") return "image";
+    if (g === "pull-video") return "video";
+    if (g === "backup") return "database";
+    return "loader";
   };
   const refresh = () => { taskbar.style.display = tasks.size > 0 ? "" : "none"; };
 
@@ -115,11 +138,12 @@ function setupTaskProgress(): void {
     let t = tasks.get(g);
     if (!t) {
       const row = el("div", { class: "taskbar-row" },
-        el("span", { class: "tb-icon" }, iconFor(g)),
+        el("span", { class: "tb-icon", "data-lucide": iconFor(g) }),
         el("span", { class: "tb-text" }, p.message),
         el("div", { class: "tb-bar" }, el("div", { class: "tb-fill" })),
       );
       taskbar.appendChild(row);
+      renderIcons();
       t = { row, done: false };
       tasks.set(g, t);
     }
@@ -133,7 +157,9 @@ function setupTaskProgress(): void {
 }
 
 window.addEventListener("DOMContentLoaded", async () => {
+  initTheme();
   buildShell();
+  renderIcons();
   startRouter();
   setupTaskProgress();
   const status = document.querySelector(".topbar-status");
