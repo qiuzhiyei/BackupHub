@@ -68,10 +68,11 @@ pub fn perform_backup(
         match collect_calls(adb_path, serial, app, cancel) {
             Ok(v) => call_list = v,
             Err(e) => {
-                // 通话记录受系统限制（adb shell 无 READ_CALL_LOG）时，给出友好提示而非裸堆栈
                 let msg = if is_permission_denial(&e) {
-                    call_skip_note = "（通话记录因系统限制跳过）".to_string();
-                    "通话记录：本机系统限制 adb 读取（需 READ_CALL_LOG 权限），已跳过；短信/通讯录不受影响".to_string()
+                    // 权限被拒：打开 Shell 权限设置页让用户手动授权（MIUI 安全中心拦截时 pm grant 无效）
+                    let _ = adb::run_adb(adb_path, &["-s", serial, "shell", "am", "start", "-a", "android.settings.APPLICATION_DETAILS_SETTINGS", "-d", "package:com.android.shell"]);
+                    call_skip_note = "（通话记录因系统限制跳过，请在手机 Shell 设置中授权后重试）".to_string();
+                    "通话记录：权限被拒（MIUI 安全中心拦截），已在手机上打开 Shell 权限设置，请手动授予通话记录权限后重新备份".to_string()
                 } else {
                     format!("通话记录读取失败: {}", e)
                 };
@@ -94,8 +95,9 @@ pub fn perform_backup(
             Ok(v) => contact_list = v,
             Err(e) => {
                 let msg = if is_permission_denial(&e) {
-                    contact_skip_note = "（通讯录因系统限制跳过）".to_string();
-                    "通讯录：本机系统限制 adb 读取（需 READ_CONTACTS 权限），已跳过；短信不受影响".to_string()
+                    let _ = adb::run_adb(adb_path, &["-s", serial, "shell", "am", "start", "-a", "android.settings.APPLICATION_DETAILS_SETTINGS", "-d", "package:com.android.shell"]);
+                    contact_skip_note = "（通讯录因系统限制跳过，请在手机 Shell 设置中授权后重试）".to_string();
+                    "通讯录：权限被拒（MIUI 安全中心拦截），已在手机上打开 Shell 权限设置，请手动授予通讯录权限后重新备份".to_string()
                 } else {
                     format!("通讯录读取失败: {}", e)
                 };
