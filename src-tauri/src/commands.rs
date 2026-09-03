@@ -37,6 +37,55 @@ pub fn cancel_backup(state: State<AppState>) -> Result<(), String> {
     Ok(())
 }
 
+/// WiFi 连接：手动输入 ip:port，连接成功后自动记住设备名
+#[tauri::command]
+pub fn wifi_connect(addr: String, state: State<AppState>) -> Result<String, String> {
+    let adb = resolve_adb(&state)?;
+    let out = adb::run_adb(&adb, &["connect", &addr])?;
+    if !out.contains("connected") && !out.contains("already") {
+        return Err(out.trim().to_string());
+    }
+    // 连接成功 → 取设备名并记住
+    let model = adb::run_adb(&adb, &["-s", &addr, "shell", "getprop", "ro.product.model"])
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+    let brand = adb::run_adb(&adb, &["-s", &addr, "shell", "getprop", "ro.product.brand"])
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+    let name = if !model.is_empty() {
+        if !brand.is_empty() && !model.to_lowercase().starts_with(&brand.to_lowercase()) {
+            format!("{} {}", brand, model)
+        } else {
+            model
+        }
+    } else {
+        addr.clone()
+    };
+    let _ = state.storage.save_wifi_device(&addr, &name);
+    Ok(name)
+}
+
+/// 列出已记住的 WiFi 设备
+#[tauri::command]
+pub fn wifi_list_saved(state: State<AppState>) -> Result<Vec<crate::storage::WifiDevice>, String> {
+    Ok(state.storage.list_wifi_devices())
+}
+
+/// 删除已记住的 WiFi 设备
+#[tauri::command]
+pub fn wifi_remove(addr: String, state: State<AppState>) -> Result<(), String> {
+    state.storage.remove_wifi_device(&addr)
+}
+
+/// mDNS 扫描同 WiFi 下的无线调试设备
+#[tauri::command]
+pub fn wifi_mdns_scan(state: State<AppState>) -> Result<Vec<adb::MdnsDevice>, String> {
+    let adb = resolve_adb(&state)?;
+    adb::mdns_scan(&adb)
+}
+
 #[tauri::command]
 pub fn adb_status(state: State<AppState>) -> Result<AdbStatus, String> {
     let cfg = state.storage.load_config();

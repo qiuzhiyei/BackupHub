@@ -8,6 +8,13 @@ use crate::models::{BackupSnapshot, CallLog, Contact, DeviceRecord, Sms};
 
 use serde::{Deserialize, Serialize};
 
+/// 已保存的 WiFi 设备（手动输入 IP:port 连接后记住）
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct WifiDevice {
+    pub addr: String,
+    pub name: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AppConfig {
     #[serde(default)]
@@ -39,6 +46,25 @@ impl Storage {
     }
     pub fn save_config(&self, cfg: &AppConfig) -> Result<(), String> {
         write_json(&self.config_path(), cfg)
+    }
+
+    // ---------- WiFi 设备记忆 ----------
+    fn wifi_devices_path(&self) -> PathBuf {
+        self.app_data.join("wifi_devices.json")
+    }
+    pub fn save_wifi_device(&self, addr: &str, name: &str) -> Result<(), String> {
+        let mut list: Vec<WifiDevice> = read_json(&self.wifi_devices_path()).unwrap_or_default();
+        list.retain(|d| d.addr != addr);
+        list.push(WifiDevice { addr: addr.to_string(), name: name.to_string() });
+        write_json(&self.wifi_devices_path(), &list)
+    }
+    pub fn list_wifi_devices(&self) -> Vec<WifiDevice> {
+        read_json(&self.wifi_devices_path()).unwrap_or_default()
+    }
+    pub fn remove_wifi_device(&self, addr: &str) -> Result<(), String> {
+        let mut list: Vec<WifiDevice> = read_json(&self.wifi_devices_path()).unwrap_or_default();
+        list.retain(|d| d.addr != addr);
+        write_json(&self.wifi_devices_path(), &list)
     }
 
     // ---------- 备份根目录 ----------

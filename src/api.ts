@@ -176,3 +176,29 @@ export async function cancelBackup(): Promise<void> {
 export async function openFolder(path: string): Promise<void> {
   await invoke("open_folder", { path });
 }
+
+// ---------- WiFi 连接 ----------
+export interface WifiDevice {
+  addr: string;
+  name: string;
+}
+
+/** WiFi 连接：输入 ip:port，成功后自动记住设备名 */
+export async function wifiConnect(addr: string): Promise<string> {
+  return invoke<string>("wifi_connect", { addr });
+}
+
+/** 列出已记住的 WiFi 设备 */
+export async function wifiListSaved(): Promise<WifiDevice[]> {
+  return invoke<WifiDevice[]>("wifi_list_saved");
+}
+
+/** 删除已记住的 WiFi 设备 */
+export async function wifiRemove(addr: string): Promise<void> {
+  await invoke("wifi_remove", { addr });
+}
+
+/** mDNS 扫描同 WiFi 下的无线调试设备 */
+export async function wifiMdnsScan(): Promise<{ serial: string; addr: string }[]> {
+  return invoke<{ serial: string; addr: string }[]>("wifi_mdns_scan");
+}

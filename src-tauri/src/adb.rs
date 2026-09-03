@@ -6,6 +6,42 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::models::DeviceStatus;
 
+/// mDNS 发现的 WiFi 设备
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct MdnsDevice {
+    pub serial: String,
+    pub addr: String, // ip:port
+}
+
+/// 通过 adb mdns services 发现同 WiFi 下的无线调试设备
+pub fn mdns_scan(adb: &PathBuf) -> Result<Vec<MdnsDevice>, String> {
+    let out = run_adb(adb, &["mdns", "services"])?;
+    let mut devices = Vec::new();
+    for line in out.lines() {
+        let line = line.trim();
+        // 格式：adb-{serial}-{random}	_adb-tls-connect._tcp	{ip}:{port}
+        if line.contains("_adb-tls-connect._tcp") {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() >= 3 {
+                // 第1段：adb-9037f7b7-gkMbZV → 提取 serial
+                let serial = parts[0]
+                    .strip_prefix("adb-")
+                    .unwrap_or(parts[0])
+                    .split('-')
+                    .next()
+                    .unwrap_or(parts[0])
+                    .to_string();
+                // 第3段：ip:port
+                let addr = parts[2].to_string();
+                if !serial.is_empty() && addr.contains(':') {
+                    devices.push(MdnsDevice { serial, addr });
+                }
+            }
+        }
+    }
+    Ok(devices)
+}
+
 /// 在系统中解析 adb 可执行文件路径
 /// 优先级：用户配置 > PATH > 常见安装目录
 pub fn resolve_adb_path(configured: Option<&str>) -> Option<PathBuf> {
