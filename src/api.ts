@@ -199,6 +199,6 @@ export async function wifiRemove(addr: string): Promise<void> {
 }
 
 /** mDNS 扫描同 WiFi 下的无线调试设备 */
-export async function wifiMdnsScan(): Promise<{ serial: string; addr: string; name: string }[]> {
-  return invoke<{ serial: string; addr: string; name: string }[]>("wifi_mdns_scan");
+export async function wifiMdnsScan(): Promise<{ serial: string; addr: string }[]> {
+  return invoke<{ serial: string; addr: string }[]>("wifi_mdns_scan");
 }

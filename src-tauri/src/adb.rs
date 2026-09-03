@@ -11,16 +11,14 @@ use crate::models::DeviceStatus;
 pub struct MdnsDevice {
     pub serial: String,
     pub addr: String, // ip:port
-    pub name: String, // 显示名：品牌 型号 序列号
 }
 
-/// 通过 adb mdns services 发现同 WiFi 下的无线调试设备，并读取设备名
+/// 通过 adb mdns services 发现同 WiFi 下的无线调试设备（不连接，只列出）
 pub fn mdns_scan(adb: &PathBuf) -> Result<Vec<MdnsDevice>, String> {
     let out = run_adb(adb, &["mdns", "services"])?;
     let mut devices = Vec::new();
     for line in out.lines() {
         let line = line.trim();
-        // 格式：adb-{serial}-{random}	_adb-tls-connect._tcp	{ip}:{port}
         if line.contains("_adb-tls-connect._tcp") {
             let parts: Vec<&str> = line.split_whitespace().collect();
             if parts.len() >= 3 {
@@ -33,25 +31,7 @@ pub fn mdns_scan(adb: &PathBuf) -> Result<Vec<MdnsDevice>, String> {
                     .to_string();
                 let addr = parts[2].to_string();
                 if !serial.is_empty() && addr.contains(':') {
-                    // 连接后读取设备信息
-                    let _ = run_adb(adb, &["connect", &addr]);
-                    let brand = run_adb(adb, &["-s", &addr, "shell", "getprop", "ro.product.brand"])
-                        .unwrap_or_default().trim().to_string();
-                    let model = run_adb(adb, &["-s", &addr, "shell", "getprop", "ro.product.model"])
-                        .unwrap_or_default().trim().to_string();
-                    let serialno = run_adb(adb, &["-s", &addr, "shell", "getprop", "ro.serialno"])
-                        .unwrap_or_default().trim().to_string();
-                    // 拼接显示名：与 USB 设备一致 Brand Model Serial
-                    let skip_brand = !model.is_empty() && !brand.is_empty()
-                        && model.to_lowercase().starts_with(&brand.to_lowercase());
-                    let name = if skip_brand {
-                        format!("{} {}", model, serialno)
-                    } else if !brand.is_empty() && !model.is_empty() {
-                        format!("{} {} {}", brand, model, serialno)
-                    } else {
-                        format!("{} {}", serial, addr)
-                    };
-                    devices.push(MdnsDevice { serial, addr, name });
+                    devices.push(MdnsDevice { serial, addr });
                 }
             }
         }

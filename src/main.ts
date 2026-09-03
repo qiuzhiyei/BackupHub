@@ -66,13 +66,14 @@ function buildShell(): void {
   document.body.appendChild(el("div", { id: "toast-host" }));
 }
 
-/** WiFi 连接弹窗：mDNS 自动发现 + 已保存设备 + 手动输入 */
+/** WiFi 连接弹窗：已连接设备 + 扫描按钮 + 手动输入 */
 async function openWifiDialog(): Promise<void> {
   const content = el("div", {},
     el("div", { class: "modal-title" }, "WiFi 连接"),
     el("div", { class: "wifi-scan-section" },
-      el("div", { class: "wifi-section-title" }, "同一 WiFi 下的设备"),
-      el("div", { id: "mdns-list", class: "wifi-saved-list" }, el("div", { class: "wifi-empty" }, "扫描中…")),
+      el("div", { class: "wifi-section-title" }, "已连接 / 可发现的设备"),
+      el("div", { id: "wifi-device-list", class: "wifi-saved-list" }, el("div", { class: "wifi-empty" }, "加载中…")),
+      el("button", { id: "wifi-rescan", class: "btn btn-ghost btn-sm", style: { marginTop: "8px" } }, "重新扫描"),
     ),
     el("div", { class: "wifi-sep" }),
     el("div", { class: "wifi-section-title" }, "手动输入"),
@@ -98,7 +99,7 @@ async function openWifiDialog(): Promise<void> {
 
   document.getElementById("wifi-close")?.addEventListener("click", () => backdrop.remove());
 
-  // 手动输入连接
+  // 手动输入
   const input = document.getElementById("wifi-addr") as HTMLInputElement | null;
   const connBtn = document.getElementById("wifi-connect-btn");
   async function doManualConnect(): Promise<void> {
@@ -120,53 +121,60 @@ async function openWifiDialog(): Promise<void> {
   connBtn?.addEventListener("click", () => void doManualConnect());
   input?.addEventListener("keydown", (e) => { if (e.key === "Enter") void doManualConnect(); });
 
-  // mDNS 扫描 + 已连接的 WiFi 设备
-  const mdnsList = document.getElementById("mdns-list");
-  try {
-    // 先列出已连接的 WiFi 设备（adb devices 里 serial 含 : 且 state=device）
-    const allDevices = await api.listDevices();
-    const connectedWifi = allDevices.filter((d) => d.state === "device" && d.serial.includes(":"));
-    // 再扫描 mDNS 发现的（可能包含未连接的）
-    const mdns = await api.wifiMdnsScan();
-    if (!mdnsList) return;
-    const rows: HTMLElement[] = [];
-    // 已连接的 WiFi 设备
-    for (const d of connectedWifi) {
-      rows.push(el("div", { class: "wifi-saved-row wifi-connected" },
-        el("span", { class: "wifi-saved-name" }, deviceLabel(d)),
-        el("span", { class: "badge badge-ok" }, "已连接"),
-      ));
+  // 加载设备列表
+  const listEl = document.getElementById("wifi-device-list");
+  async function loadList(): Promise<void> {
+    if (!listEl) return;
+    listEl.replaceChildren(el("div", { class: "wifi-empty" }, "加载中…"));
+    try {
+      const allDevices = await api.listDevices();
+      // 已连接的 WiFi 设备（serial 含 : 且 state=device）
+      const connectedWifi = allDevices.filter((d) => d.state === "device" && d.serial.includes(":"));
+      // mDNS 发现的（不连接，只列出）
+      const mdns = await api.wifiMdnsScan();
+      // 去重：mDNS 中 IP 已在 connectedWifi 里的跳过
+      const connectedIPs = connectedWifi.map((d) => d.serial.split(":")[0]);
+      const newDevices = mdns.filter((d) => !connectedIPs.includes(d.addr.split(":")[0]));
+
+      const rows: HTMLElement[] = [];
+      for (const d of connectedWifi) {
+        rows.push(el("div", { class: "wifi-saved-row wifi-connected" },
+          el("span", { class: "wifi-saved-name" }, deviceLabel(d)),
+          el("span", { class: "badge badge-ok" }, "已连接"),
+        ));
+      }
+      for (const d of newDevices) {
+        rows.push(el("div", { class: "wifi-saved-row" },
+          el("span", { class: "wifi-saved-name" }, d.serial),
+          el("span", { class: "wifi-saved-addr" }, d.addr),
+          el("button", { class: "btn btn-primary btn-sm", onclick: async () => {
+            const btn = event?.target as HTMLButtonElement;
+            if (btn) { btn.textContent = "连接中…"; btn.disabled = true; }
+            try {
+              const name = await api.wifiConnect(d.addr);
+              toast("已连接：" + name, "success");
+              backdrop.remove();
+              void refreshTopbarStatus();
+              void refreshCurrent();
+            } catch (e) {
+              toast("连接失败：" + String(e), "error");
+              if (btn) { btn.textContent = "连接"; btn.disabled = false; }
+            }
+          } }, "连接"),
+        ));
+      }
+      if (!rows.length) {
+        listEl.replaceChildren(el("div", { class: "wifi-empty" }, "没有发现设备\n请确认手机无线调试已打开"));
+      } else {
+        listEl.replaceChildren(...rows);
+      }
+    } catch {
+      listEl.replaceChildren(el("div", { class: "wifi-empty" }, "加载失败"));
     }
-    // mDNS 发现的（排除已连接的）
-    for (const d of mdns) {
-      if (connectedWifi.some((c) => c.serial.includes(d.addr) || d.addr.includes(c.serial.split(":")[0]))) continue;
-      rows.push(el("div", { class: "wifi-saved-row" },
-        el("span", { class: "wifi-saved-name" }, d.name),
-        el("span", { class: "wifi-saved-addr" }, d.addr),
-        el("button", { class: "btn btn-primary btn-sm", onclick: async () => {
-          const btn = event?.target as HTMLButtonElement;
-          if (btn) { btn.textContent = "连接中…"; btn.disabled = true; }
-          try {
-            const name = await api.wifiConnect(d.addr);
-            toast("已连接：" + name, "success");
-            backdrop.remove();
-            void refreshTopbarStatus();
-            void refreshCurrent();
-          } catch (e) {
-            toast("连接失败：" + String(e), "error");
-            if (btn) { btn.textContent = "连接"; btn.disabled = false; }
-          }
-        } }, "连接"),
-      ));
-    }
-    if (!rows.length) {
-      mdnsList.replaceChildren(el("div", { class: "wifi-empty" }, "没有发现设备\n请确认手机：设置 → 开发者选项 → 无线调试 → 打开"));
-    } else {
-      mdnsList.replaceChildren(...rows);
-    }
-  } catch {
-    mdnsList?.replaceChildren(el("div", { class: "wifi-empty" }, "扫描不可用，可手动输入"));
   }
+  document.getElementById("wifi-rescan")?.addEventListener("click", () => void loadList());
+  void loadList();
+  setTimeout(() => input?.focus(), 50);
 }
 
 // 底部状态栏：每项操作一行，并发时不冲突
