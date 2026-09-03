@@ -1889,7 +1889,7 @@ a:focus-visible {
 }
 
 /* ---------- WiFi 连接弹窗 ---------- */
-.wifi-modal { width: min(460px, 92vw); }
+.wifi-modal { width: min(560px, 92vw); }
 .wifi-saved-list { display: flex; flex-direction: column; gap: 8px; margin: 8px 0; }
 .wifi-empty { font-size: 13px; color: var(--text-muted); text-align: center; padding: 16px 0; white-space: pre-line; }
 .wifi-saved-row {
