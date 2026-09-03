@@ -3,6 +3,7 @@ import { startRouter, refreshCurrent } from "./router";
 import { renderIcons } from "./icons";
 import * as api from "./api";
 import type { ProgressPayload } from "./types";
+import { deviceLabel } from "./views/components";
 
 const THEME_KEY = "backuphub-theme";
 
@@ -119,37 +120,52 @@ async function openWifiDialog(): Promise<void> {
   connBtn?.addEventListener("click", () => void doManualConnect());
   input?.addEventListener("keydown", (e) => { if (e.key === "Enter") void doManualConnect(); });
 
-  // mDNS 扫描
+  // mDNS 扫描 + 已连接的 WiFi 设备
   const mdnsList = document.getElementById("mdns-list");
   try {
-    const devices = await api.wifiMdnsScan();
+    // 先列出已连接的 WiFi 设备（adb devices 里 serial 含 : 且 state=device）
+    const allDevices = await api.listDevices();
+    const connectedWifi = allDevices.filter((d) => d.state === "device" && d.serial.includes(":"));
+    // 再扫描 mDNS 发现的（可能包含未连接的）
+    const mdns = await api.wifiMdnsScan();
     if (!mdnsList) return;
-    if (!devices.length) {
-      mdnsList.replaceChildren(el("div", { class: "wifi-empty" }, "没有发现设备\n请确认手机：设置 → 开发者选项 → 无线调试 → 打开"));
-    } else {
-      mdnsList.replaceChildren(...devices.map((d) =>
-        el("div", { class: "wifi-saved-row" },
-          el("span", { class: "wifi-saved-name" }, d.name),
-          el("span", { class: "wifi-saved-addr" }, d.addr),
-          el("button", { class: "btn btn-primary btn-sm", onclick: async () => {
-            const btn = event?.target as HTMLButtonElement;
-            if (btn) { btn.textContent = "连接中…"; btn.disabled = true; }
-            try {
-              const name = await api.wifiConnect(d.addr);
-              toast("已连接：" + name, "success");
-              backdrop.remove();
-              void refreshTopbarStatus();
-              void refreshCurrent();
-            } catch (e) {
-              toast("连接失败：" + String(e), "error");
-              if (btn) { btn.textContent = "连接"; btn.disabled = false; }
-            }
-          } }, "连接"),
-        ),
+    const rows: HTMLElement[] = [];
+    // 已连接的 WiFi 设备
+    for (const d of connectedWifi) {
+      rows.push(el("div", { class: "wifi-saved-row wifi-connected" },
+        el("span", { class: "wifi-saved-name" }, deviceLabel(d)),
+        el("span", { class: "badge badge-ok" }, "已连接"),
       ));
     }
+    // mDNS 发现的（排除已连接的）
+    for (const d of mdns) {
+      if (connectedWifi.some((c) => c.serial.includes(d.addr) || d.addr.includes(c.serial.split(":")[0]))) continue;
+      rows.push(el("div", { class: "wifi-saved-row" },
+        el("span", { class: "wifi-saved-name" }, d.name),
+        el("span", { class: "wifi-saved-addr" }, d.addr),
+        el("button", { class: "btn btn-primary btn-sm", onclick: async () => {
+          const btn = event?.target as HTMLButtonElement;
+          if (btn) { btn.textContent = "连接中…"; btn.disabled = true; }
+          try {
+            const name = await api.wifiConnect(d.addr);
+            toast("已连接：" + name, "success");
+            backdrop.remove();
+            void refreshTopbarStatus();
+            void refreshCurrent();
+          } catch (e) {
+            toast("连接失败：" + String(e), "error");
+            if (btn) { btn.textContent = "连接"; btn.disabled = false; }
+          }
+        } }, "连接"),
+      ));
+    }
+    if (!rows.length) {
+      mdnsList.replaceChildren(el("div", { class: "wifi-empty" }, "没有发现设备\n请确认手机：设置 → 开发者选项 → 无线调试 → 打开"));
+    } else {
+      mdnsList.replaceChildren(...rows);
+    }
   } catch {
-    mdnsList?.replaceChildren(el("div", { class: "wifi-empty" }, "mDNS 扫描不可用"));
+    mdnsList?.replaceChildren(el("div", { class: "wifi-empty" }, "扫描不可用，可手动输入"));
   }
 }
 

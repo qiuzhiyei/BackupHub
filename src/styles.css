@@ -1897,6 +1897,10 @@ a:focus-visible {
   padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px;
   background: var(--surface-2); flex-wrap: wrap;
 }
+.wifi-saved-row.wifi-connected {
+  border-color: var(--ok);
+  background: var(--ok-soft);
+}
 .wifi-saved-name { font-weight: 600; font-size: 14px; flex: 1; }
 .wifi-saved-addr { font-size: 12.5px; color: var(--text-muted); }
 .wifi-input-row { display: flex; gap: 8px; margin-top: 10px; }
