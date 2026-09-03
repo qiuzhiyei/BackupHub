@@ -167,8 +167,10 @@ export async function mediaView(kind: MediaKind): Promise<HTMLElement> {
       const serial = deviceSelect.value;
       if (!serial) { toast("请先选择设备", "error"); return; }
       // 只拉扫描到的媒体文件（按扩展名过滤，不拉整个目录，避免 .bin 等无关文件）
+      // 只备份选中目录的文件；忽略缓存开关开启时也排除垃圾目录的文件
+      const visible = c.ignoreJunk ? (f: PhotoFolder) => !isJunkDir(f.dir) : () => true;
       const files = c.folders
-        .filter((f) => c.selected.has(f.dir))
+        .filter((f) => c.selected.has(f.dir) && visible(f))
         .flatMap((f) => f.files);
       if (!files.length) { toast("请至少选择一个目录", "error"); return; }
       backupRunning = true;
