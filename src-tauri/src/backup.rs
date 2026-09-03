@@ -122,6 +122,7 @@ pub fn perform_backup(
         device_brand: brand,
         custom_name: custom_name.to_string(),
         note: final_note,
+        device_label: String::new(),
         created_at: now,
         sms_count: 0,
         call_count: 0,

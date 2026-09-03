@@ -78,6 +78,9 @@ pub struct BackupSnapshot {
     pub device_brand: String,
     pub custom_name: String,
     pub note: String,
+    /// 存储时的设备目录名（含序列号，如 Xiaomi_23116PN5BC_序列号）；旧快照为空，snapshot_dir 用 v0 回退
+    #[serde(default)]
+    pub device_label: String,
     /// 毫秒时间戳
     pub created_at: i64,
     pub sms_count: usize,

@@ -201,6 +201,7 @@ pub fn pull_media_files(
         device_brand: brand,
         custom_name: custom_name.to_string(),
         note,
+        device_label: String::new(),
         created_at: now,
         sms_count: 0,
         call_count: 0,

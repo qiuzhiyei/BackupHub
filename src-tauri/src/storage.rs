@@ -72,8 +72,13 @@ impl Storage {
     }
 
     /// 某快照的数据目录：<备份根>/<设备名>/<时间>/<kind>
+    /// 新快照用 meta.device_label（含序列号）；旧快照（无此字段）用 v0 回退（不含序列号）
     fn snapshot_dir(&self, meta: &BackupSnapshot, kind: &str) -> PathBuf {
-        let label = device_label(&meta.device_brand, &meta.device_model, &meta.device_serial);
+        let label = if !meta.device_label.is_empty() {
+            meta.device_label.clone()
+        } else {
+            device_label_v0(&meta.device_brand, &meta.device_model, &meta.device_serial)
+        };
         let time = fmt_folder_time(meta.created_at);
         self.backup_dir().join(label).join(time).join(kind)
     }
@@ -144,6 +149,7 @@ impl Storage {
         meta.sms_count = sms.len();
         meta.call_count = calls.len();
         meta.contact_count = contacts.len();
+        meta.device_label = device_label(&meta.device_brand, &meta.device_model, &meta.device_serial);
 
         let dir = self.snapshot_dir(&meta, &meta.kind);
         fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
@@ -182,6 +188,7 @@ impl Storage {
         meta.sms_count = 0;
         meta.call_count = 0;
         meta.contact_count = 0;
+        meta.device_label = device_label(&meta.device_brand, &meta.device_model, &meta.device_serial);
 
         let dir = self.snapshot_dir(&meta, &meta.kind);
         fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
@@ -405,6 +412,32 @@ fn default_app_labels() -> Vec<(&'static str, &'static str)> {
 }
 
 pub fn device_label(brand: &str, model: &str, serial: &str) -> String {
+    let b = safe(brand);
+    let m = safe(model);
+    let s = safe(serial);
+    let b_lower = b.to_lowercase();
+    let m_lower = m.to_lowercase();
+    // 型号/营销名以品牌开头（如 "Xiaomi 14 Pro" 以 "Xiaomi" 开头）则不重复加品牌
+    let skip_brand = !m.is_empty() && m_lower.starts_with(&b_lower);
+    let mut parts: Vec<String> = Vec::new();
+    if !b.is_empty() && !skip_brand {
+        parts.push(b);
+    }
+    if !m.is_empty() {
+        parts.push(m);
+    }
+    // 始终追加序列号，便于区分同型号的多台设备
+    if !s.is_empty() {
+        parts.push(s);
+    }
+    if parts.is_empty() {
+        parts.push("unknown".to_string());
+    }
+    parts.join("_")
+}
+
+/// 旧版 device_label（不追加序列号），仅用于旧快照的目录定位（向后兼容）
+pub fn device_label_v0(brand: &str, model: &str, serial: &str) -> String {
     let b = safe(brand);
     let m = safe(model);
     let b_lower = b.to_lowercase();
