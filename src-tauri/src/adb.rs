@@ -267,7 +267,23 @@ pub fn list_devices(adb: &PathBuf) -> Result<Vec<DeviceStatus>, String> {
             continue;
         }
         let serial = parts[0].to_string();
-        let state = parts[1].to_string();
+        let mut state = parts[1].to_string();
+
+        // WiFi 设备离线时自动重连（serial 含 : 说明是 WiFi 设备，不是 USB）
+        if state != "device" && serial.contains(':') {
+            let _ = run_adb(adb, &["connect", &serial]);
+            // 重连后重新读取状态
+            if let Ok(recheck) = run_adb(adb, &["devices"]) {
+                for rl in recheck.lines() {
+                    let rl = rl.trim();
+                    if rl.starts_with(&serial) {
+                        if let Some(s) = rl.split_whitespace().nth(1) {
+                            state = s.to_string();
+                        }
+                    }
+                }
+            }
+        }
 
         // 从行里解析 model:xxx device:xxx product:xxx
         let mut model = String::new();
