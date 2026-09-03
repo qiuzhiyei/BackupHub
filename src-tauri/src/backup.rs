@@ -83,6 +83,8 @@ pub fn perform_backup(
         }
     }
 
+    let mut contact_skip_note = String::new();
+
     if options.contacts && !cancel.load(Ordering::Relaxed) {
         emit(app, ProgressPayload {
             stage: "contacts".into(), current: 0, total: 0,
@@ -91,9 +93,15 @@ pub fn perform_backup(
         match collect_contacts(adb_path, serial, app, cancel) {
             Ok(v) => contact_list = v,
             Err(e) => {
+                let msg = if is_permission_denial(&e) {
+                    contact_skip_note = "（通讯录因系统限制跳过）".to_string();
+                    "通讯录：本机系统限制 adb 读取（需 READ_CONTACTS 权限），已跳过；短信不受影响".to_string()
+                } else {
+                    format!("通讯录读取失败: {}", e)
+                };
                 emit(app, ProgressPayload {
                     stage: "error".into(), current: 0, total: 0,
-                    message: format!("通讯录读取失败: {}", e),
+                    message: msg,
                 });
             }
         }
@@ -108,9 +116,9 @@ pub fn perform_backup(
     });
 
     let final_note = if cancelled {
-        format!("{}（已取消）{}", note, call_skip_note)
+        format!("{}（已取消）{}{}", note, call_skip_note, contact_skip_note)
     } else {
-        format!("{}{}", note, call_skip_note)
+        format!("{}{}{}", note, call_skip_note, contact_skip_note)
     };
 
     let meta = BackupSnapshot {
@@ -290,17 +298,24 @@ fn is_permission_denial(err: &str) -> bool {
         || err.contains("SecurityException")
         || err.contains("READ_CALL_LOG")
         || err.contains("WRITE_CALL_LOG")
+        || err.contains("READ_CONTACTS")
+        || err.contains("WRITE_CONTACTS")
 }
 
 fn collect_contacts(adb: &PathBuf, serial: &str, app: &AppHandle, cancel: &AtomicBool) -> Result<Vec<Contact>, String> {
-    let rows = adb::query_provider(
-        adb,
-        serial,
-        "content://com.android.contacts/data",
-        &["contact_id", "display_name", "mimetype", "data1"],
-        None,
-        None,
-    )?;
+    let uri = "content://com.android.contacts/data";
+    let projection = &["contact_id", "display_name", "mimetype", "data1"];
+    let rows = match adb::query_provider(adb, serial, uri, projection, None, None) {
+        Ok(r) => r,
+        Err(e) if is_permission_denial(&e) => {
+            let _ = adb::run_adb(
+                adb,
+                &["-s", serial, "shell", "pm", "grant", "com.android.shell", "android.permission.READ_CONTACTS"],
+            );
+            adb::query_provider(adb, serial, uri, projection, None, None)?
+        }
+        Err(e) => return Err(e),
+    };
     let total = rows.len();
     let mut map: HashMap<String, Contact> = HashMap::new();
     for (i, row) in rows.iter().enumerate() {
