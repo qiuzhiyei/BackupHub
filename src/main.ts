@@ -1,5 +1,5 @@
 import { el, toast } from "./dom";
-import { startRouter } from "./router";
+import { startRouter, refreshCurrent } from "./router";
 import { renderIcons } from "./icons";
 import * as api from "./api";
 import type { ProgressPayload } from "./types";
@@ -108,6 +108,8 @@ async function openWifiDialog(): Promise<void> {
       const name = await api.wifiConnect(addr);
       toast("已连接：" + name, "success");
       backdrop.remove();
+      void refreshTopbarStatus();
+      void refreshCurrent();
     } catch (e) {
       toast("连接失败：" + String(e), "error");
     } finally {
@@ -136,6 +138,8 @@ async function openWifiDialog(): Promise<void> {
               const name = await api.wifiConnect(d.addr);
               toast("已连接：" + name, "success");
               backdrop.remove();
+              void refreshTopbarStatus();
+              void refreshCurrent();
             } catch (e) {
               toast("连接失败：" + String(e), "error");
               if (btn) { btn.textContent = "连接"; btn.disabled = false; }
@@ -251,14 +255,33 @@ window.addEventListener("DOMContentLoaded", async () => {
   renderIcons();
   startRouter();
   setupTaskProgress();
-  const status = document.querySelector(".topbar-status");
-  if (status) {
-    try {
-      const s = await api.adbStatus();
-      status.textContent = s.available ? "ADB 已就绪" : "ADB 未就绪";
-      status.classList.add(s.available ? "ok" : "err");
-    } catch {
-      status.textContent = "ADB 状态未知";
-    }
-  }
+  await refreshTopbarStatus();
 });
+
+/** 刷新顶栏状态：检测 USB + WiFi 设备 */
+async function refreshTopbarStatus(): Promise<void> {
+  const status = document.querySelector(".topbar-status");
+  if (!status) return;
+  try {
+    const devices = await api.listDevices();
+    const usb = devices.filter((d) => d.state === "device" && !d.serial.includes(":"));
+    const wifi = devices.filter((d) => d.state === "device" && d.serial.includes(":"));
+    if (usb.length && wifi.length) {
+      status.textContent = `USB ${usb.length} 台 · WiFi ${wifi.length} 台`;
+      status.className = "topbar-status ok";
+    } else if (usb.length) {
+      status.textContent = `USB ${usb.length} 台`;
+      status.className = "topbar-status ok";
+    } else if (wifi.length) {
+      status.textContent = `WiFi ${wifi.length} 台`;
+      status.className = "topbar-status ok";
+    } else {
+      const s = await api.adbStatus();
+      status.textContent = s.available ? "无设备" : "ADB 未就绪";
+      status.className = `topbar-status ${s.available ? "" : "err"}`;
+    }
+  } catch {
+    status.textContent = "ADB 状态未知";
+    status.className = "topbar-status";
+  }
+}

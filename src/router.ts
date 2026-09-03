@@ -42,6 +42,11 @@ export function navigate(to: string): void {
   }
 }
 
+/** 强制重新渲染当前页面（WiFi 连接后刷新设备列表用） */
+export function refreshCurrent(): void {
+  render();
+}
+
 export async function render(): Promise<void> {
   const hash = location.hash || "#/";
   const view = document.getElementById("view");
