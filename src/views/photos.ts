@@ -19,12 +19,14 @@ interface Cache {
   selected: Set<string>;
   folders: PhotoFolder[];
   scannedSerial: string;
-  /** 统一存放：勾选后所有文件直接放 PHOTO/VIDEO 根目录，不保留目录结构 */
+  /** 扁平存放：勾选后所有文件直接放 PHOTO/VIDEO 根目录，不保留目录结构 */
   flatten: boolean;
+  /** 忽略缩略图/缓存等垃圾目录（默认开） */
+  ignoreJunk: boolean;
 }
 const caches: Record<MediaKind, Cache> = {
-  photos: { selected: new Set(), folders: [], scannedSerial: "", flatten: false },
-  videos: { selected: new Set(), folders: [], scannedSerial: "", flatten: false },
+  photos: { selected: new Set(), folders: [], scannedSerial: "", flatten: false, ignoreJunk: true },
+  videos: { selected: new Set(), folders: [], scannedSerial: "", flatten: false, ignoreJunk: true },
 };
 
 const LABEL: Record<MediaKind, string> = { photos: "照片", videos: "视频" };
@@ -75,24 +77,36 @@ export async function mediaView(kind: MediaKind): Promise<HTMLElement> {
     }
   }
 
+  /** 判断是否为垃圾目录（缩略图缓存、回收站、时间戳缓存等） */
+  function isJunkDir(dir: string): boolean {
+    const JUNK = [".thumbnails", ".thumb", ".thumbdata", ".globalTrash",
+      ".app_icon_back", ".gs", ".gs_fs0", ".gs_fs2", ".gs_fs6",
+      ".estrongs", ".nomedia", ".cache"];
+    const basename = dir.split("/").pop() || dir;
+    if (basename.length >= 10 && /^\d+$/.test(basename)) return true;
+    return dir.split("/").some((comp) => JUNK.includes(comp));
+  }
+
   function renderFolders() {
-    if (!c.folders.length) {
-      folderWrap.replaceChildren(emptyState(`未扫描到${word}`, `该设备 MediaStore 无${word}记录`));
+    // 按开关过滤垃圾目录
+    const shown = c.ignoreJunk ? c.folders.filter((f) => !isJunkDir(f.dir)) : c.folders;
+    if (!shown.length) {
+      folderWrap.replaceChildren(emptyState(`未扫描到${word}`, c.ignoreJunk ? `该设备无${word}（或全是缩略图缓存，关闭「忽略缓存」可查看全部）` : `该设备无${word}`));
       footer.replaceChildren();
       return;
     }
-    const allSelected = c.folders.every((f) => c.selected.has(f.dir));
+    const allSelected = shown.every((f) => c.selected.has(f.dir));
     folderWrap.replaceChildren(
       el("div", { class: "photo-folder photo-folder-head" },
         checkboxEl(allSelected, () => {
-          if (allSelected) c.selected.clear();
-          else c.folders.forEach((f) => c.selected.add(f.dir));
+          if (allSelected) shown.forEach((f) => c.selected.delete(f.dir));
+          else shown.forEach((f) => c.selected.add(f.dir));
           renderFolders();
         }),
-        el("span", { class: "pf-name" }, `${c.folders.length} 个目录`),
-        el("span", { class: "pf-meta" }, `共 ${c.folders.reduce((a, f) => a + f.count, 0)} 个${word}`),
+        el("span", { class: "pf-name" }, `${shown.length} 个目录`),
+        el("span", { class: "pf-meta" }, `共 ${shown.reduce((a, f) => a + f.count, 0)} 个${word}`),
       ),
-      ...c.folders.map(folderRow),
+      ...shown.map(folderRow),
     );
     renderFooter();
   }
@@ -203,9 +217,22 @@ export async function mediaView(kind: MediaKind): Promise<HTMLElement> {
       c.flatten = flattenCb.checked;
       flattenLabel.classList.toggle("on", flattenCb.checked);
     });
+    const junkCb = el("input", { type: "checkbox", checked: c.ignoreJunk }) as HTMLInputElement;
+    junkCb.checked = c.ignoreJunk;
+    const junkLabel = el("label", { class: `pf-flatten ${c.ignoreJunk ? "on" : ""}`, title: "勾选后隐藏缩略图缓存、回收站、时间戳缓存等目录，减少列表噪音；关闭则显示全部" },
+      junkCb,
+      el("span", { class: "pf-flatten-dot" }),
+      el("span", {}, "忽略缓存"),
+    );
+    junkCb.addEventListener("change", () => {
+      c.ignoreJunk = junkCb.checked;
+      junkLabel.classList.toggle("on", junkCb.checked);
+      renderFolders();
+    });
     footer.replaceChildren(
-      el("span", { class: "pf-summary" }, `已选 ${selCount}/${c.folders.length} 个目录 · ${fmtSize(selSize)}`),
+      el("span", { class: "pf-summary" }, `已选 ${selCount}/${c.ignoreJunk ? c.folders.filter((f) => !isJunkDir(f.dir)).length : c.folders.length} 个目录 · ${fmtSize(selSize)}`),
       el("div", { class: "pf-foot-right" },
+        junkLabel,
         flattenLabel,
         pullBtn,
       ),

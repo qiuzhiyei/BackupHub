@@ -88,10 +88,6 @@ fn scan_media_fs(
         let name = basename(path);
         // 应用私有目录归并到应用根（同一应用的多个子目录合并为一项），其余按各自父目录分组
         let key = group_key(&parent);
-        // 跳过垃圾目录（缩略图缓存、回收站、图标备份、时间戳缓存目录等）
-        if is_junk_dir(&key) {
-            continue;
-        }
         groups.entry(key).or_default().push(PhotoFile { path: path.to_string(), name, size, date: mtime });
     }
 
@@ -504,27 +500,6 @@ fn relative_under_root(path: &str) -> String {
         return rest.trim_start_matches('/').to_string();
     }
     storage::safe(path)
-}
-
-/// 跳过垃圾目录（缩略图缓存、回收站、图标备份、时间戳缓存目录等），避免列表被无用行刷屏
-fn is_junk_dir(path: &str) -> bool {
-    const JUNK_NAMES: &[&str] = &[
-        ".thumbnails", ".thumb", ".thumbdata", ".globalTrash",
-        ".app_icon_back", ".gs", ".gs_fs0", ".gs_fs2", ".gs_fs6",
-        ".estrongs", ".nomedia", ".cache",
-    ];
-    let basename = path.rsplit('/').next().unwrap_or(path);
-    // 纯数字目录名 ≥ 10 位（时间戳缓存，如 1732456646827）
-    if basename.len() >= 10 && basename.chars().all(|c| c.is_ascii_digit()) {
-        return true;
-    }
-    // 路径中包含已知垃圾目录名
-    for component in path.split('/') {
-        if JUNK_NAMES.contains(&component) {
-            return true;
-        }
-    }
-    false
 }
 
 /// 分组键：应用私有目录归并到应用根（Android/{data,media,obb}/<包名>），
