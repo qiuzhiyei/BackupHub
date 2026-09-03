@@ -156,8 +156,10 @@ export async function mediaView(kind: MediaKind): Promise<HTMLElement> {
   }
 
   function renderFooter() {
-    const selCount = c.selected.size;
-    const selSize = c.folders.filter((f) => c.selected.has(f.dir)).reduce((a, f) => a + f.total_size, 0);
+    // 只统计可见目录的选中状态（忽略缓存开启时排除垃圾目录）
+    const visible = c.ignoreJunk ? c.folders.filter((f) => !isJunkDir(f.dir)) : c.folders;
+    const selCount = visible.filter((f) => c.selected.has(f.dir)).length;
+    const selSize = visible.filter((f) => c.selected.has(f.dir)).reduce((a, f) => a + f.total_size, 0);
     const pullBtn = el("button", {
       class: "btn btn-primary",
       disabled: selCount === 0 || backupRunning,
@@ -229,10 +231,17 @@ export async function mediaView(kind: MediaKind): Promise<HTMLElement> {
     junkCb.addEventListener("change", () => {
       c.ignoreJunk = junkCb.checked;
       junkLabel.classList.toggle("on", junkCb.checked);
+      if (c.ignoreJunk) {
+        // 开启时：自动取消选中垃圾目录
+        c.folders.filter((f) => isJunkDir(f.dir)).forEach((f) => c.selected.delete(f.dir));
+      } else {
+        // 关闭时：自动全选（恢复默认）
+        c.folders.forEach((f) => c.selected.add(f.dir));
+      }
       renderFolders();
     });
     footer.replaceChildren(
-      el("span", { class: "pf-summary" }, `已选 ${selCount}/${c.ignoreJunk ? c.folders.filter((f) => !isJunkDir(f.dir)).length : c.folders.length} 个目录 · ${fmtSize(selSize)}`),
+      el("span", { class: "pf-summary" }, `已选 ${selCount}/${visible.length} 个目录 · ${fmtSize(selSize)}`),
       el("div", { class: "pf-foot-right" },
         junkLabel,
         flattenLabel,
