@@ -48,6 +48,8 @@ export interface BackupSnapshot {
   device_brand: string;
   custom_name: string;
   note: string;
+  /** 存储时的设备目录名（含序列号） */
+  device_label: string;
   created_at: number;
   sms_count: number;
   call_count: number;

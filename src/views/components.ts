@@ -163,10 +163,15 @@ export function statChip(label: string, value: string | number, ico = ""): HTMLE
 
 export { fmtDateShort };
 
-/** 统一的设备显示名：品牌 型号（如 Xiaomi 23116PN5BC），缺则回退序列号 */
+/** 统一的设备显示名：品牌 型号 序列号（如 Xiaomi 23116PN5BC abc123），方便区分同型号设备 */
 export function deviceLabel(d: { brand?: string; model?: string; serial: string }): string {
-  const bm = [d.brand, d.model].filter(Boolean).join(" ").trim();
-  return bm || d.serial;
+  const brand = d.brand?.trim() || "";
+  const model = d.model?.trim() || "";
+  const serial = d.serial?.trim() || "";
+  // 型号以品牌开头（如 "Xiaomi 14 Pro" 以 "Xiaomi" 开头）则不重复加品牌
+  const skipBrand = model && brand && model.toLowerCase().startsWith(brand.toLowerCase());
+  const bm = (skipBrand ? model : [brand, model].filter(Boolean).join(" ")).trim();
+  return bm ? `${bm} ${serial}` : serial;
 }
 
 /** 紧凑分页器：上一页/下一页 + 跳转到第几页（无数字条、无首页末页） */

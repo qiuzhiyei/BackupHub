@@ -2,7 +2,7 @@ import { el, fmtDate, toast } from "../dom";
 import { navigate } from "../router";
 import * as api from "../api";
 import type { BackupSnapshot, DeviceRecord } from "../types";
-import { emptyState, pageHeader, statChip, createSnapshotRow } from "./components";
+import { emptyState, pageHeader, statChip, createSnapshotRow, deviceLabel } from "./components";
 import { promptDialog } from "../modal";
 
 export async function historyView(p: { params: Record<string, string> }): Promise<HTMLElement> {
@@ -24,16 +24,16 @@ export async function historyView(p: { params: Record<string, string> }): Promis
     }
 
     wrap.replaceChildren(
-      pageHeader(dev?.custom_name || dev?.model || serial,
+      pageHeader(dev?.custom_name || (dev ? deviceLabel(dev) : serial),
         el("button", { class: "btn btn-ghost", onclick: () => navigate("#/devices") }, "← 返回设备"),
         el("button", { class: "btn btn-primary", onclick: () => navigate(`#/backup?serial=${encodeURIComponent(serial)}`) }, "＋ 新建备份"),
       ),
       el("div", { class: "device-summary" },
-        statChip("型号", dev?.model || "—", "📟"),
-        statChip("制造商", dev?.manufacturer || "—", "🏭"),
-        statChip("序列号", serial, "🔑"),
-        statChip("备份次数", dev?.backup_count ?? snaps.length, "🗂️"),
-        statChip("最近备份", dev?.last_backup ? fmtDate(dev.last_backup) : "—", "🕐"),
+        statChip("型号", dev?.model || "—", "smartphone"),
+        statChip("制造商", dev?.manufacturer || "—", "factory"),
+        statChip("序列号", serial, "key"),
+        statChip("备份次数", dev?.backup_count ?? snaps.length, "layers"),
+        statChip("最近备份", dev?.last_backup ? fmtDate(dev.last_backup) : "—", "clock"),
       ),
       el("div", { class: "section-head" },
         el("h2", { class: "section-title" }, "备份历史"),

@@ -2,7 +2,7 @@ import { el, esc, fmtDate } from "../dom";
 import { navigate } from "../router";
 import * as api from "../api";
 import type { DeviceRecord } from "../types";
-import { emptyState, pageHeader } from "./components";
+import { emptyState, pageHeader, deviceLabel } from "./components";
 
 function recordCard(r: DeviceRecord): HTMLElement {
   return el("div", {
@@ -12,7 +12,7 @@ function recordCard(r: DeviceRecord): HTMLElement {
     el("div", { class: "card-top" },
       el("div", { class: "card-icon" }, el("i", { "data-lucide": "smartphone" })),
       el("div", { class: "card-info" },
-        el("div", { class: "card-title" }, r.custom_name || r.model || "未命名设备"),
+        el("div", { class: "card-title" }, r.custom_name || deviceLabel(r)),
         el("div", { class: "card-sub" }, [r.brand, r.model].filter(Boolean).join(" · ") || "—"),
       ),
     ),

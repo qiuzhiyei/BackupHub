@@ -2,7 +2,7 @@ import { el } from "../dom";
 import { navigate } from "../router";
 import * as api from "../api";
 import type { BackupSnapshot, DeviceRecord } from "../types";
-import { emptyState, pageHeader, createSnapshotRow } from "./components";
+import { emptyState, pageHeader, createSnapshotRow, deviceLabel } from "./components";
 import { toast } from "../dom";
 
 export async function dataView(): Promise<HTMLElement> {
@@ -20,7 +20,7 @@ export async function dataView(): Promise<HTMLElement> {
 
   function nameOf(s: BackupSnapshot): string {
     const dev = devices.find((d) => d.serial === s.device_serial);
-    return s.custom_name || dev?.custom_name || s.device_model || s.device_serial;
+    return s.custom_name || dev?.custom_name || deviceLabel({ brand: s.device_brand, model: s.device_model, serial: s.device_serial });
   }
 
   function render() {
