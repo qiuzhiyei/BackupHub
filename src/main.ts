@@ -127,7 +127,7 @@ async function openWifiDialog(): Promise<void> {
     } else {
       mdnsList.replaceChildren(...devices.map((d) =>
         el("div", { class: "wifi-saved-row" },
-          el("span", { class: "wifi-saved-name" }, d.serial),
+          el("span", { class: "wifi-saved-name" }, d.name),
           el("span", { class: "wifi-saved-addr" }, d.addr),
           el("button", { class: "btn btn-primary btn-sm", onclick: async () => {
             const btn = event?.target as HTMLButtonElement;
