@@ -64,7 +64,7 @@ export async function backupView(p: { query: URLSearchParams }): Promise<HTMLEle
       },
     },
       el("div", { class: "card-top" },
-        el("div", { class: "card-icon" }, "📱"),
+        el("div", { class: "card-icon" }, el("i", { "data-lucide": "smartphone" })),
         el("div", { class: "card-info" },
           el("div", { class: "card-title" }, deviceLabel(d)),
           el("div", { class: "card-sub" }, d.manufacturer || d.brand || "—"),
@@ -102,13 +102,13 @@ export async function backupView(p: { query: URLSearchParams }): Promise<HTMLEle
       const cb = el("input", { type: "checkbox", checked: true }) as HTMLInputElement;
       return el("label", { class: "opt-chip" },
         cb,
-        el("span", { class: "opt-ico" }, ico),
+        el("span", { class: "opt-ico", "data-lucide": ico }),
         label,
       );
     };
-    const smsOpt = optChip("短信", "✉️");
-    const callOpt = optChip("通话记录", "📞");
-    const contactOpt = optChip("通讯录", "👥");
+    const smsOpt = optChip("短信", "mail");
+    const callOpt = optChip("通话记录", "phone");
+    const contactOpt = optChip("通讯录", "users");
 
     const startBtn = el("button", { class: "btn btn-primary btn-lg" }, "开始备份");
 

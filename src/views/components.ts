@@ -136,7 +136,7 @@ export function createPagination(
 /** 空状态 */
 export function emptyState(text: string, sub = ""): HTMLElement {
   return el("div", { class: "empty-state" },
-    el("div", { class: "empty-ico" }, "📭"),
+    el("div", { class: "empty-ico" }, el("i", { "data-lucide": "package-open" })),
     el("div", { class: "empty-text" }, text),
     sub ? el("div", { class: "empty-sub" }, sub) : "",
   );
@@ -150,10 +150,10 @@ export function pageHeader(title: string, ...actions: (Node | string)[]): HTMLEl
   );
 }
 
-/** 通用信息标签 */
+/** 通用信息标签（ico 为 Lucide 图标名，如 "smartphone"） */
 export function statChip(label: string, value: string | number, ico = ""): HTMLElement {
   return el("div", { class: "stat-chip" },
-    ico ? el("span", { class: "stat-ico" }, ico) : "",
+    ico ? el("span", { class: "stat-ico", "data-lucide": ico }) : "",
     el("div", { class: "stat-body" },
       el("div", { class: "stat-val" }, String(value)),
       el("div", { class: "stat-label" }, label),
@@ -229,11 +229,13 @@ export function createSnapshotRow(
     ),
     el("div", { class: "snap-stats" },
       ...(s.kind === "PHOTO" || s.kind === "VIDEO"
-        ? [el("span", { class: "mini-chip media-chip" }, s.kind === "PHOTO" ? "📷 照片备份" : "🎞️ 视频备份")]
+        ? [el("span", { class: "mini-chip media-chip" },
+            el("i", { "data-lucide": s.kind === "PHOTO" ? "camera" : "film" }),
+            ` ${s.kind === "PHOTO" ? "照片备份" : "视频备份"}`)]
         : [
-          el("span", { class: "mini-chip" }, `✉️ ${s.sms_count}`),
-          el("span", { class: "mini-chip" }, `📞 ${s.call_count}`),
-          el("span", { class: "mini-chip" }, `👥 ${s.contact_count}`),
+          el("span", { class: "mini-chip" }, el("i", { "data-lucide": "mail" }), ` ${s.sms_count}`),
+          el("span", { class: "mini-chip" }, el("i", { "data-lucide": "phone" }), ` ${s.call_count}`),
+          el("span", { class: "mini-chip" }, el("i", { "data-lucide": "users" }), ` ${s.contact_count}`),
         ]),
     ),
     el("div", { class: "snap-note" }, s.note ? esc(s.note) : ""),

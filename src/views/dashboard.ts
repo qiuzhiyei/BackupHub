@@ -26,11 +26,13 @@ function recentRow(s: BackupSnapshot): HTMLElement {
     ),
     el("div", { class: "recent-chips" },
       ...(s.kind === "PHOTO" || s.kind === "VIDEO"
-        ? [el("span", { class: "mini-chip media-chip" }, s.kind === "PHOTO" ? "📷 照片" : "🎞️ 视频")]
+        ? [el("span", { class: "mini-chip media-chip" },
+            el("i", { "data-lucide": s.kind === "PHOTO" ? "camera" : "film" }),
+            ` ${s.kind === "PHOTO" ? "照片" : "视频"}`)]
         : [
-          el("span", { class: "mini-chip" }, `✉️ ${s.sms_count}`),
-          el("span", { class: "mini-chip" }, `📞 ${s.call_count}`),
-          el("span", { class: "mini-chip" }, `👥 ${s.contact_count}`),
+          el("span", { class: "mini-chip" }, el("i", { "data-lucide": "mail" }), ` ${s.sms_count}`),
+          el("span", { class: "mini-chip" }, el("i", { "data-lucide": "phone" }), ` ${s.call_count}`),
+          el("span", { class: "mini-chip" }, el("i", { "data-lucide": "users" }), ` ${s.contact_count}`),
         ]),
     ),
   );
@@ -40,7 +42,7 @@ function compactLiveCard(d: DeviceStatus): HTMLElement {
   const ready = d.state === "device";
   return el("div", { class: "card live-card compact" },
     el("div", { class: "card-top" },
-      el("div", { class: "card-icon sm" }, "📱"),
+      el("div", { class: "card-icon sm" }, el("i", { "data-lucide": "smartphone" })),
       el("div", { class: "card-info" },
         el("div", { class: "card-title" }, deviceLabel(d)),
         el("div", { class: "card-sub" }, esc(d.serial)),
@@ -84,11 +86,11 @@ export async function dashboardView(): Promise<HTMLElement> {
     const contactT = snaps.reduce((a, s) => a + s.contact_count, 0);
 
     statsRow.replaceChildren(
-      statChip("已备份设备", devices.length, "📱"),
-      statChip("备份快照", snaps.length, "🗂️"),
-      statChip("短信总数", smsT, "✉️"),
-      statChip("通话总数", callT, "📞"),
-      statChip("联系人总数", contactT, "👥"),
+      statChip("已备份设备", devices.length, "smartphone"),
+      statChip("备份快照", snaps.length, "layers"),
+      statChip("短信总数", smsT, "mail"),
+      statChip("通话总数", callT, "phone"),
+      statChip("联系人总数", contactT, "users"),
     );
 
     const recent = [...snaps].sort((a, b) => b.created_at - a.created_at).slice(0, 6);

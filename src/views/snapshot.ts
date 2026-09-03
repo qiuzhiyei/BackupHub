@@ -33,7 +33,7 @@ export async function snapshotView(p: { params: Record<string, string> }): Promi
   // 媒体快照（照片/视频）：不显示短信/通话/通讯录标签，改为「打开文件夹」
   if (isMedia) {
     const word = s.kind === "PHOTO" ? "照片" : "视频";
-    const ico = s.kind === "PHOTO" ? "📷" : "🎞️";
+    const ico = s.kind === "PHOTO" ? "camera" : "film";
     const openBtn = el("button", { class: "btn btn-primary" }, "打开文件夹");
     openBtn.addEventListener("click", async () => {
       try {
@@ -61,7 +61,7 @@ export async function snapshotView(p: { params: Record<string, string> }): Promi
         el("button", { class: "btn btn-ghost btn-sm sm-edit", title: "编辑名称" }, "✎ 编辑名称"),
       ),
       el("div", { class: "panel media-snap-panel" },
-        el("div", { class: "media-snap-ico" }, ico),
+        el("div", { class: "media-snap-ico" }, el("i", { "data-lucide": ico })),
         el("div", { class: "media-snap-body" },
           el("div", { class: "media-snap-title" }, `${word}备份`),
           el("div", { class: "media-snap-note" }, s.note ? esc(s.note) : `点击下方按钮在文件管理器中查看已备份的${word}`),
@@ -104,9 +104,9 @@ export async function snapshotView(p: { params: Record<string, string> }): Promi
   let smsMsgListEl: HTMLElement;
 
   const tabsEl = el("div", { class: "tabs" },
-    tabBtn("sms", "短信", `✉️ ${s.sms_count}`, s.sms_count > 0),
-    tabBtn("calls", "通话记录", `📞 ${s.call_count}`, s.call_count > 0),
-    tabBtn("contacts", "通讯录", `👥 ${s.contact_count}`, s.contact_count > 0),
+    tabBtn("sms", "短信", el("i", { "data-lucide": "mail" }), ` ${s.sms_count}`, s.sms_count > 0),
+    tabBtn("calls", "通话记录", el("i", { "data-lucide": "phone" }), ` ${s.call_count}`, s.call_count > 0),
+    tabBtn("contacts", "通讯录", el("i", { "data-lucide": "users" }), ` ${s.contact_count}`, s.contact_count > 0),
   );
 
   const toolbarEl = el("div", { class: "tab-toolbar" });
@@ -140,11 +140,12 @@ export async function snapshotView(p: { params: Record<string, string> }): Promi
     }
   });
 
-  function tabBtn(t: Tab, label: string, count: string, enabled: boolean): HTMLElement {
+  function tabBtn(t: Tab, label: string, iconEl: Node, count: string, enabled: boolean): HTMLElement {
     return el("button", {
       class: `tab-btn ${tab === t ? "active" : ""} ${enabled ? "" : "disabled"}`,
       onclick: () => switchTab(t),
     },
+      el("span", { class: "tab-ico" }, iconEl),
       el("span", { class: "tab-label" }, label),
       el("span", { class: "tab-count" }, count),
     );
@@ -466,17 +467,17 @@ export async function snapshotView(p: { params: Record<string, string> }): Promi
       return;
     }
     const map: Record<number, { icon: string; label: string; cls: string }> = {
-      1: { icon: "↙️", label: "呼入", cls: "call-in" },
-      2: { icon: "↗️", label: "呼出", cls: "call-out" },
-      3: { icon: "✕", label: "未接", cls: "call-miss" },
-      5: { icon: "🚫", label: "拒接", cls: "call-rej" },
+      1: { icon: "phone-incoming", label: "呼入", cls: "call-in" },
+      2: { icon: "phone-outgoing", label: "呼出", cls: "call-out" },
+      3: { icon: "phone-missed", label: "未接", cls: "call-miss" },
+      5: { icon: "phone-off", label: "拒接", cls: "call-rej" },
     };
-    const info = map[res.items[0].call_type] || { icon: "•", label: "其他", cls: "" };
+    const info = map[res.items[0].call_type] || { icon: "phone", label: "其他", cls: "" };
     const list = el("div", { class: "call-list" },
       ...res.items.map((c) => {
         const t = map[c.call_type] || info;
         return el("div", { class: `call-row ${t.cls}` },
-          el("div", { class: `call-ico ${t.cls}` }, t.icon),
+          el("div", { class: `call-ico ${t.cls}` }, el("i", { "data-lucide": t.icon })),
           el("div", { class: "call-main" },
             el("div", { class: "call-name" }, esc(c.name || c.number || "未知号码")),
             el("div", { class: "call-sub" }, c.name ? esc(c.number) : t.label),
@@ -501,10 +502,10 @@ export async function snapshotView(p: { params: Record<string, string> }): Promi
       ...res.items.map((c) => {
         const avatar = el("div", { class: "contact-avatar" }, esc((c.name || "?").slice(0, 1).toUpperCase()));
         const phones = c.phones.length
-          ? c.phones.map((p) => el("div", { class: "contact-phone" }, el("span", {}, "📞"), el("span", {}, esc(p))))
+          ? c.phones.map((p) => el("div", { class: "contact-phone" }, el("span", { class: "ci-ico" }, el("i", { "data-lucide": "phone" })), el("span", {}, esc(p))))
           : [el("div", { class: "contact-phone empty" }, "无电话号码")];
         const emails = c.emails.length
-          ? c.emails.map((e) => el("div", { class: "contact-mail" }, el("span", {}, "✉️"), el("span", {}, esc(e))))
+          ? c.emails.map((e) => el("div", { class: "contact-mail" }, el("span", { class: "ci-ico" }, el("i", { "data-lucide": "mail" })), el("span", {}, esc(e))))
           : [];
         return el("div", { class: "contact-card" },
           avatar,

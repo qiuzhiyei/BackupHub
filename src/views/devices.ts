@@ -10,7 +10,7 @@ function recordCard(r: DeviceRecord): HTMLElement {
     onclick: () => navigate(`#/devices/${encodeURIComponent(r.serial)}`),
   },
     el("div", { class: "card-top" },
-      el("div", { class: "card-icon" }, "📲"),
+      el("div", { class: "card-icon" }, el("i", { "data-lucide": "smartphone" })),
       el("div", { class: "card-info" },
         el("div", { class: "card-title" }, r.custom_name || r.model || "未命名设备"),
         el("div", { class: "card-sub" }, [r.brand, r.model].filter(Boolean).join(" · ") || "—"),
