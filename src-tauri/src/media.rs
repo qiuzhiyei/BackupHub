@@ -55,10 +55,11 @@ fn scan_media_fs(
             message: format!("正在扫描{}（遍历全部目录，可能需要 1-2 分钟）…", label),
         },
     );
-    // find /storage/emulated/0 -type f \( -iname '*.mp4' -o ... \) -exec stat -c '%n|%s|%Y' {} + 2>/dev/null
+    // find -printf 用 find 自身的 fstatat 遍历信息（不走单独 stat），
+    // 能访问 Android 11+ 存储限制下 stat 无法读取的文件，避免漏文件
     let ext_part = exts.iter().map(|e| format!("-iname '*.{}'", e)).collect::<Vec<_>>().join(" -o ");
     let cmd = format!(
-        "find /storage/emulated/0 -type f \\( {} \\) -exec stat -c '%n|%s|%Y' {{}} + 2>/dev/null",
+        "find /storage/emulated/0 -type f \\( {} \\) -printf '%p|%s|%T@\\n' 2>/dev/null",
         ext_part
     );
     // find 遍历时遇到无权限目录会非零退出，但仍会输出可访问的文件；
@@ -71,12 +72,13 @@ fn scan_media_fs(
         if line.is_empty() {
             continue;
         }
-        // 格式 path|size|mtime；路径可能含 |，故从右取 3 段
+        // 格式 path|size|mtime（%T@ 为浮点秒，如 1234567890.123456）；路径可能含 |，故从右取 3 段
         let parts: Vec<&str> = line.rsplitn(3, '|').collect();
         if parts.len() < 3 {
             continue;
         }
-        let mtime = parts[0].parse::<i64>().unwrap_or(0).saturating_mul(1000);
+        // %T@ 是浮点秒，取整数部分 ×1000 转毫秒
+        let mtime = parts[0].split('.').next().and_then(|s| s.parse::<i64>().ok()).unwrap_or(0).saturating_mul(1000);
         let size = parts[1].parse::<i64>().unwrap_or(0);
         let path = parts[2];
         if path.is_empty() {
