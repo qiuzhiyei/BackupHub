@@ -1,9 +1,9 @@
-import { el, esc, toast } from "../dom";
+import { el, toast } from "../dom";
 import { navigate } from "../router";
 import * as api from "../api";
 import type { BackupOptions, ProgressPayload } from "../types";
 import { emptyState, pageHeader } from "./components";
-import { getSelectedSerial, setSelectedSerial, getSelectedLabel } from "../state";
+import { getSelectedSerial, setSelectedSerial } from "../state";
 
 export async function backupView(p: { query: URLSearchParams }): Promise<HTMLElement> {
   const preSerial = p.query.get("serial") || getSelectedSerial();
@@ -21,9 +21,7 @@ export async function backupView(p: { query: URLSearchParams }): Promise<HTMLEle
   let cancelling = false;
 
   const wrap = el("div", { class: "page" },
-    pageHeader("短信/通话/通讯录备份",
-      el("span", { class: "section-hint" }, `设备：${esc(getSelectedLabel())}`),
-    ),
+    pageHeader("短信/通话/通讯录备份"),
     el("div", { class: "panel", id: "form-panel" }),
     el("div", { class: "panel", id: "progress-panel", style: { display: "none" } }),
   );
