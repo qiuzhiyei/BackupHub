@@ -248,6 +248,11 @@ svg.lucide {
   color: var(--text);
   border-color: var(--border-strong);
 }
+.topbar-icon-btn.connected {
+  color: var(--ok);
+  border-color: var(--ok);
+  background: var(--ok-soft);
+}
 .topbar-icon-btn:focus-visible {
   outline: 2px solid var(--primary);
   outline-offset: 2px;

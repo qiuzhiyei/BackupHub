@@ -26,10 +26,13 @@ function buildShell(): void {
     localStorage.setItem(THEME_KEY, next);
     renderIcons();
   });
-  const wifiBtn = el("button", { class: "topbar-icon-btn", title: "WiFi 连接设备" },
+  const wifiBtn = el("button", { class: "topbar-icon-btn", title: "WiFi 连接" },
     el("i", { class: "nav-ico", "data-lucide": "wifi" }),
   );
   wifiBtn.addEventListener("click", () => void openWifiDialog());
+  const usbBtn = el("button", { class: "topbar-icon-btn", title: "USB 状态" },
+    el("i", { class: "nav-ico", "data-lucide": "usb" }),
+  );
   const app = el("div", { class: "app" },
     el("aside", { class: "sidebar" },
       el("div", { class: "brand" },
@@ -54,6 +57,7 @@ function buildShell(): void {
       el("header", { class: "topbar" },
         el("div", { class: "topbar-title" }, "BackupHub"),
         el("div", { class: "topbar-right" },
+          usbBtn,
           wifiBtn,
           themeBtn,
           el("div", { class: "topbar-status" }, "ADB: 检测中…"),
@@ -287,17 +291,21 @@ window.addEventListener("DOMContentLoaded", async () => {
   await refreshTopbarStatus();
 });
 
-/** 刷新顶栏状态：显示当前连接的设备名（品牌 型号 序列号） */
+/** 刷新顶栏状态：USB/WiFi 图标变绿 + 状态文字显示设备名 */
 async function refreshTopbarStatus(): Promise<void> {
-  const status = document.querySelector(".topbar-status");
+  const status = document.querySelector(".topbar-status") as HTMLElement | null;
+  const wifiIcon = document.querySelector('[title="WiFi 连接"]') as HTMLElement | null;
+  const usbIcon = document.querySelector('[title="USB 状态"]') as HTMLElement | null;
   if (!status) return;
   try {
     const devices = await api.listDevices();
     const connected = devices.filter((d) => d.state === "device");
+    const hasUsb = connected.some((d) => !d.serial.includes(":"));
+    const hasWifi = connected.some((d) => d.serial.includes(":"));
+    if (wifiIcon) wifiIcon.classList.toggle("connected", hasWifi);
+    if (usbIcon) usbIcon.classList.toggle("connected", hasUsb);
     if (connected.length) {
-      // 显示所有连接设备的名称，绿色
-      const names = connected.map((d) => deviceLabel(d));
-      status.textContent = names.join(" · ");
+      status.textContent = connected.map((d) => deviceLabel(d)).join(" · ");
       status.className = "topbar-status ok";
     } else {
       const s = await api.adbStatus();
@@ -307,5 +315,7 @@ async function refreshTopbarStatus(): Promise<void> {
   } catch {
     status.textContent = "ADB 状态未知";
     status.className = "topbar-status";
+    wifiIcon?.classList.remove("connected");
+    usbIcon?.classList.remove("connected");
   }
 }
