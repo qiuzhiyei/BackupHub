@@ -249,6 +249,11 @@ pub fn list_devices(adb: &PathBuf) -> Result<Vec<DeviceStatus>, String> {
         let serial = parts[0].to_string();
         let state = parts[1].to_string();
 
+        // 跳过 mDNS 服务名条目（如 adb-9037f7b7-gkMbZV._adb-tls-connect._tcp）
+        if serial.contains("_adb-") || serial.starts_with("adb-") {
+            continue;
+        }
+
         // 从行里解析 model:xxx device:xxx product:xxx
         let mut model = String::new();
         let mut brand = String::new();
