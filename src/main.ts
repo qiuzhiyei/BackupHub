@@ -285,22 +285,17 @@ window.addEventListener("DOMContentLoaded", async () => {
   await refreshTopbarStatus();
 });
 
-/** 刷新顶栏状态：检测 USB + WiFi 设备 */
+/** 刷新顶栏状态：显示当前连接的设备名（品牌 型号 序列号） */
 async function refreshTopbarStatus(): Promise<void> {
   const status = document.querySelector(".topbar-status");
   if (!status) return;
   try {
     const devices = await api.listDevices();
-    const usb = devices.filter((d) => d.state === "device" && !d.serial.includes(":"));
-    const wifi = devices.filter((d) => d.state === "device" && d.serial.includes(":"));
-    if (usb.length && wifi.length) {
-      status.textContent = `USB ${usb.length} 台 · WiFi ${wifi.length} 台`;
-      status.className = "topbar-status ok";
-    } else if (usb.length) {
-      status.textContent = `USB ${usb.length} 台`;
-      status.className = "topbar-status ok";
-    } else if (wifi.length) {
-      status.textContent = `WiFi ${wifi.length} 台`;
+    const connected = devices.filter((d) => d.state === "device");
+    if (connected.length) {
+      // 显示所有连接设备的名称，绿色
+      const names = connected.map((d) => deviceLabel(d));
+      status.textContent = names.join(" · ");
       status.className = "topbar-status ok";
     } else {
       const s = await api.adbStatus();
