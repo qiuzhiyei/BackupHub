@@ -1,7 +1,7 @@
 import { el, esc, toast } from "../dom";
 import { navigate } from "../router";
 import * as api from "../api";
-import type { BackupOptions, DeviceRecord, ProgressPayload } from "../types";
+import type { BackupOptions, ProgressPayload } from "../types";
 import { emptyState, pageHeader } from "./components";
 import { getSelectedSerial, setSelectedSerial } from "../state";
 
@@ -32,18 +32,6 @@ export async function backupView(p: { query: URLSearchParams }): Promise<HTMLEle
   const progressPanel = wrap.querySelector("#progress-panel") as HTMLElement;
 
   async function loadAll() {
-    let records: DeviceRecord[] = [];
-    try {
-      records = await api.listDeviceRecords();
-    } catch {
-      records = [];
-    }
-    const rec = records.find((r) => r.serial === selectedSerial);
-    const defaultName = rec?.custom_name || selectedSerial;
-
-    const nameInput = el("input", {
-      class: "input", type: "text", value: defaultName, placeholder: "设备自定义名称",
-    }) as HTMLInputElement;
     const noteInput = el("textarea", {
       class: "input textarea", placeholder: "备份备注（可选）",
     }) as HTMLTextAreaElement;
@@ -67,7 +55,6 @@ export async function backupView(p: { query: URLSearchParams }): Promise<HTMLEle
         toast("请至少选择一种数据类型", "error");
         return;
       }
-      const name = nameInput.value.trim();
       const note = noteInput.value.trim();
       cancelling = false;
       startBtn.setAttribute("disabled", "true");
@@ -79,7 +66,7 @@ export async function backupView(p: { query: URLSearchParams }): Promise<HTMLEle
       let unlisten: Awaited<ReturnType<typeof api.onBackupProgress>> | null = null;
       try {
         unlisten = await api.onBackupProgress((pp) => renderProgress(pp));
-        const snap = await api.backupStart(selectedSerial, options, name, note);
+        const snap = await api.backupStart(selectedSerial, options, "", note);
         if (snap.note && snap.note.includes("已取消")) {
           toast("已取消", "info");
           startBtn.removeAttribute("disabled");
@@ -100,9 +87,6 @@ export async function backupView(p: { query: URLSearchParams }): Promise<HTMLEle
 
     formPanel.replaceChildren(
       el("div", { class: "panel-head" }, el("h3", {}, "备份设置")),
-      el("div", { class: "form-row" },
-        el("label", { class: "form-label" }, "设备名称"), nameInput,
-      ),
       el("div", { class: "form-row" },
         el("label", { class: "form-label" }, "备份备注"), noteInput,
       ),
