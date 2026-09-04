@@ -292,7 +292,7 @@ window.addEventListener("DOMContentLoaded", async () => {
 });
 
 /** 刷新顶栏状态：USB/WiFi 图标变绿 + 状态文字显示设备名 */
-async function refreshTopbarStatus(): Promise<void> {
+export async function refreshTopbarStatus(): Promise<void> {
   const status = document.querySelector(".topbar-status") as HTMLElement | null;
   const wifiIcon = document.querySelector('[title="WiFi 连接"]') as HTMLElement | null;
   const usbIcon = document.querySelector('[title="USB 状态"]') as HTMLElement | null;

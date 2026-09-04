@@ -8,6 +8,7 @@ import { mediaView } from "./views/photos";
 import { settingsView } from "./views/settings";
 import { clear } from "./dom";
 import { renderIcons } from "./icons";
+import { refreshTopbarStatus } from "./main";
 
 export interface RouteParams {
   params: Record<string, string>;
@@ -87,6 +88,7 @@ export async function render(): Promise<void> {
     clear(view);
     view.appendChild(content);
     renderIcons();
+    void refreshTopbarStatus();
   } catch (err) {
     clear(view);
     const box = document.createElement("div");
