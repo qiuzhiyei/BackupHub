@@ -1,118 +1,60 @@
 import { el, esc, toast } from "../dom";
 import { navigate } from "../router";
 import * as api from "../api";
-import type { BackupOptions, DeviceStatus, DeviceRecord, ProgressPayload } from "../types";
-import { emptyState, pageHeader, deviceLabel } from "./components";
+import type { BackupOptions, DeviceRecord, ProgressPayload } from "../types";
+import { emptyState, pageHeader } from "./components";
 import { getSelectedSerial, setSelectedSerial } from "../state";
 
 export async function backupView(p: { query: URLSearchParams }): Promise<HTMLElement> {
   const preSerial = p.query.get("serial") || getSelectedSerial();
-  setSelectedSerial(preSerial);
+  if (preSerial) setSelectedSerial(preSerial);
+
+  // 未选设备 → 提示去设备页
+  if (!preSerial) {
+    return el("div", { class: "page" },
+      pageHeader("短信/通话/通讯录备份"),
+      emptyState("未选择设备", "请先到「设备」页选择一台设备"),
+    );
+  }
+
+  const selectedSerial = preSerial;
+  let cancelling = false;
 
   const wrap = el("div", { class: "page" },
-    pageHeader("短信/通话/通讯录备份"),
-    el("div", { class: "backup-layout" },
-      el("div", { class: "panel", id: "picker-panel" }, emptyState("正在检测设备…")),
-      el("div", { class: "panel", id: "form-panel" }),
+    pageHeader("短信/通话/通讯录备份",
+      el("span", { class: "section-hint" }, `设备：${esc(selectedSerial)}`),
     ),
+    el("div", { class: "panel", id: "form-panel" }),
     el("div", { class: "panel", id: "progress-panel", style: { display: "none" } }),
   );
 
-  let ready: DeviceStatus[] = [];
-  let records: DeviceRecord[] = [];
-  let selectedSerial = preSerial;
-  // 取消中：点击「取消备份」后置 true
-  let cancelling = false;
-
-  const pickerPanel = wrap.querySelector("#picker-panel") as HTMLElement;
   const formPanel = wrap.querySelector("#form-panel") as HTMLElement;
   const progressPanel = wrap.querySelector("#progress-panel") as HTMLElement;
 
   async function loadAll() {
-    try {
-      ready = (await api.listDevices()).filter((d) => d.state === "device");
-    } catch (e) {
-      ready = [];
-      toast("ADB 不可用: " + String(e), "error");
-    }
+    let records: DeviceRecord[] = [];
     try {
       records = await api.listDeviceRecords();
     } catch {
       records = [];
     }
-    if (selectedSerial && !ready.some((d) => d.serial === selectedSerial)) {
-      selectedSerial = "";
-    }
-    renderPicker();
-    renderForm();
-  }
-
-  function renderPicker() {
-    pickerPanel.replaceChildren(
-      el("div", { class: "panel-head" }, el("h3", {}, "1. 选择设备")),
-      ...(ready.length
-        ? ready.map((d) => devicePickerCard(d, d.serial === selectedSerial))
-        : [emptyState("没有可用的设备", "请用 USB 连接手机并允许调试授权")]),
-    );
-  }
-
-  function devicePickerCard(d: DeviceStatus, active: boolean): HTMLElement {
-    return el("div", {
-      class: `picker-card ${active ? "active" : ""}`,
-      onclick: () => {
-        selectedSerial = d.serial;
-        setSelectedSerial(d.serial);
-        renderPicker();
-        renderForm();
-      },
-    },
-      el("div", { class: "card-top" },
-        el("div", { class: "card-icon" }, el("i", { "data-lucide": "smartphone" })),
-        el("div", { class: "card-info" },
-          el("div", { class: "card-title" }, deviceLabel(d)),
-          el("div", { class: "card-sub" }, d.manufacturer || d.brand || "—"),
-        ),
-        el("span", { class: "badge badge-ok" }, "就绪"),
-      ),
-      el("div", { class: "card-meta" }, el("span", { class: "meta-line" }, `序列号: ${esc(d.serial)}`)),
-    );
-  }
-
-  function renderForm() {
-    if (!selectedSerial) {
-      formPanel.replaceChildren(
-        el("div", { class: "panel-head" }, el("h3", {}, "2. 备份设置")),
-        emptyState("请先选择设备"),
-      );
-      return;
-    }
-    const dev = ready.find((d) => d.serial === selectedSerial)!;
     const rec = records.find((r) => r.serial === selectedSerial);
-    const defaultName = rec?.custom_name || deviceLabel(dev);
+    const defaultName = rec?.custom_name || selectedSerial;
 
     const nameInput = el("input", {
-      class: "input",
-      type: "text",
-      value: defaultName,
-      placeholder: "设备自定义名称",
+      class: "input", type: "text", value: defaultName, placeholder: "设备自定义名称",
     }) as HTMLInputElement;
     const noteInput = el("textarea", {
-      class: "input textarea",
-      placeholder: "备份备注（可选）",
+      class: "input textarea", placeholder: "备份备注（可选）",
     }) as HTMLTextAreaElement;
 
     const optChip = (label: string, ico: string) => {
       const cb = el("input", { type: "checkbox", checked: true }) as HTMLInputElement;
-      return el("label", { class: "opt-chip" },
-        cb,
-        el("span", { class: "opt-ico", "data-lucide": ico }),
-        label,
-      );
+      return el("label", { class: "opt-chip" }, cb, el("span", { class: "opt-ico", "data-lucide": ico }), label);
     };
     const smsOpt = optChip("短信", "mail");
     const callOpt = optChip("通话记录", "phone");
     const contactOpt = optChip("通讯录", "users");
-
     const startBtn = el("button", { class: "btn btn-primary btn-lg" }, "开始备份");
 
     startBtn.onclick = async () => {
@@ -157,14 +99,12 @@ export async function backupView(p: { query: URLSearchParams }): Promise<HTMLEle
     };
 
     formPanel.replaceChildren(
-      el("div", { class: "panel-head" }, el("h3", {}, "2. 备份设置")),
+      el("div", { class: "panel-head" }, el("h3", {}, "备份设置")),
       el("div", { class: "form-row" },
-        el("label", { class: "form-label" }, "设备名称"),
-        nameInput,
+        el("label", { class: "form-label" }, "设备名称"), nameInput,
       ),
       el("div", { class: "form-row" },
-        el("label", { class: "form-label" }, "备份备注"),
-        noteInput,
+        el("label", { class: "form-label" }, "备份备注"), noteInput,
       ),
       el("div", { class: "form-row" },
         el("label", { class: "form-label" }, "备份数据类型"),

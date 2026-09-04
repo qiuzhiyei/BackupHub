@@ -2,8 +2,8 @@ import { el, esc, fmtDate, toast } from "../dom";
 import { navigate } from "../router";
 import * as api from "../api";
 import type { BackupSnapshot, PhotoFolder, ProgressPayload } from "../types";
-import { emptyState, pageHeader, deviceLabel } from "./components";
-import { getSelectedSerial, setSelectedSerial } from "../state";
+import { emptyState, pageHeader } from "./components";
+import { getSelectedSerial } from "../state";
 
 export type MediaKind = "photos" | "videos";
 
@@ -35,12 +35,24 @@ const LABEL: Record<MediaKind, string> = { photos: "照片", videos: "视频" };
 export async function mediaView(kind: MediaKind): Promise<HTMLElement> {
   const c = caches[kind];
   const word = LABEL[kind];
+  const serial = getSelectedSerial();
   const wrap = el("div", { class: "page" });
-  const deviceSelect = el("select", { class: "input" }) as HTMLSelectElement;
   const scanBtn = el("button", { class: "btn btn-primary" }, `扫描${word}`);
-  const folderWrap = el("div", { class: "photo-folders" }, emptyState(`先选择设备并扫描${word}`, `将按设备原目录分类列出${word}`));
+  const folderWrap = el("div", { class: "photo-folders" });
   const footer = el("div", { class: "photo-footer" });
   const progressPanel = el("div", { class: "panel photo-progress", style: { display: "none" } });
+
+  // 未选设备 → 提示去设备页
+  if (!serial) {
+    wrap.replaceChildren(
+      pageHeader(`${word}备份`),
+      emptyState("未选择设备", "请先到「设备」页选择一台设备"),
+    );
+    return wrap;
+  }
+
+  // 已选设备 → 显示设备名（只读）+ 扫描按钮
+  folderWrap.replaceChildren(emptyState(`点击「扫描${word}」`, `将按设备原目录分类列出${word}`));
 
   // 备份重入保护：进行中禁止再次点击「开始备份」，避免并发拉取/弹多个完成窗
   let backupRunning = false;
@@ -51,36 +63,7 @@ export async function mediaView(kind: MediaKind): Promise<HTMLElement> {
 
   function setProgressVisible(visible: boolean) {
     progressPanel.style.display = visible ? "" : "none";
-    // 进度面板 sticky 钉底时，footer 让位为 static，避免两个 sticky-bottom 叠在底部重叠
     footer.style.position = visible ? "static" : "";
-  }
-
-  async function refreshDevices() {
-    try {
-      const list = (await api.listDevices()).filter((d) => d.state === "device");
-      deviceSelect.replaceChildren(...(list.length
-        ? list.map((d) => el("option", { value: d.serial }, deviceLabel(d)))
-        : [el("option", { value: "" }, "无可用设备")]));
-    } catch {
-      deviceSelect.replaceChildren(el("option", { value: "" }, "ADB 不可用"));
-    }
-    // 先恢复全局选中的设备（跨页面持久），再恢复上次扫描结果
-    const globalSerial = getSelectedSerial();
-    if (globalSerial && [...deviceSelect.options].some((o) => o.value === globalSerial)) {
-      deviceSelect.value = globalSerial;
-    } else if (c.scannedSerial) {
-      const has = [...deviceSelect.options].some((o) => o.value === c.scannedSerial);
-      if (has) {
-        deviceSelect.value = c.scannedSerial;
-      } else {
-        c.folders = [];
-        c.selected.clear();
-        c.scannedSerial = "";
-      }
-    }
-    if (deviceSelect.value && c.scannedSerial === deviceSelect.value && c.folders.length) {
-      renderFolders();
-    }
   }
 
   /** 判断是否为垃圾目录（缩略图缓存、回收站、时间戳缓存等） */
@@ -172,7 +155,7 @@ export async function mediaView(kind: MediaKind): Promise<HTMLElement> {
     }, backupRunning ? "备份中…" : "开始备份");
     pullBtn.onclick = async () => {
       if (backupRunning) return;
-      const serial = deviceSelect.value;
+      const serial = getSelectedSerial();
       if (!serial) { toast("请先选择设备", "error"); return; }
       // 只拉扫描到的媒体文件（按扩展名过滤，不拉整个目录，避免 .bin 等无关文件）
       // 只备份选中目录的文件；忽略缓存开关开启时也排除垃圾目录的文件
@@ -332,8 +315,8 @@ export async function mediaView(kind: MediaKind): Promise<HTMLElement> {
 
   scanBtn.onclick = async () => {
     if (backupRunning) { toast("备份进行中，请稍候", "error"); return; }
-    const serial = deviceSelect.value;
-    if (!serial) { toast("请先选择设备", "error"); return; }
+    const serial = getSelectedSerial();
+    if (!serial) { toast("请先到「设备」页选择设备", "error"); return; }
     setProgressVisible(false);
     scanBtn.disabled = true;
     scanBtn.textContent = `扫描${word}中…`;
@@ -352,35 +335,24 @@ export async function mediaView(kind: MediaKind): Promise<HTMLElement> {
     }
   };
 
-  deviceSelect.addEventListener("change", () => {
-    const v = deviceSelect.value;
-    setSelectedSerial(v);
-    if (v && v !== c.scannedSerial) {
-      c.folders = [];
-      c.selected.clear();
-      c.scannedSerial = "";
-      setProgressVisible(false);
-      folderWrap.replaceChildren(emptyState(`先选择设备并扫描${word}`, `将按设备原目录分类列出${word}`));
-      footer.replaceChildren();
-    }
-  });
-
   wrap.replaceChildren(
-    pageHeader(`${word}备份`),
+    pageHeader(`${word}备份`,
+      el("span", { class: "section-hint" }, `设备：${serial}`),
+    ),
     el("div", { class: "panel" },
       el("div", { class: "form-row row-inline" },
-        el("label", { class: "form-label" }, "设备"),
-        deviceSelect,
         scanBtn,
-        el("button", { class: "btn btn-ghost btn-sm", onclick: () => void refreshDevices() }, "刷新"),
       ),
-      el("div", { class: "hint-line" }, `扫描后按设备原目录分类列出${word}，默认全选（=全部备份），可取消个别目录。同一应用的多个子目录会归拢为一项（如「酷狗音乐」），点「开始备份」只拉取扫描到的${word}文件（不拉整个目录，避免 .bin 等无关文件）。默认按应用名/原目录结构存入「备份目录」下的 <设备>/<时间>/${kind === "photos" ? "PHOTO" : "VIDEO"} 子目录；目录太多时可勾选底部「统一存放」，所有文件直接放进根目录、不再分层，便于一次性浏览（同名自动加后缀）。并生成备份记录（仪表盘/查看数据/设备页可见）。备份目录可在设置中改。`),
+      el("div", { class: "hint-line" }, `扫描后按设备原目录分类列出${word}，默认全选。同一应用的子目录归拢为一项。点「开始备份」只拉取扫描到的${word}文件（不拉整个目录）。目录太多时勾选底部「统一存放」扁平存放。`),
     ),
     folderWrap,
     footer,
     progressPanel,
   );
 
-  void refreshDevices();
+  // 恢复上次扫描结果（仅当设备没变）
+  if (c.scannedSerial === serial && c.folders.length) {
+    renderFolders();
+  }
   return wrap;
 }
