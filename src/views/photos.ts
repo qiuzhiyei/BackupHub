@@ -3,6 +3,7 @@ import { navigate } from "../router";
 import * as api from "../api";
 import type { BackupSnapshot, PhotoFolder, ProgressPayload } from "../types";
 import { emptyState, pageHeader, deviceLabel } from "./components";
+import { getSelectedSerial, setSelectedSerial } from "../state";
 
 export type MediaKind = "photos" | "videos";
 
@@ -63,17 +64,22 @@ export async function mediaView(kind: MediaKind): Promise<HTMLElement> {
     } catch {
       deviceSelect.replaceChildren(el("option", { value: "" }, "ADB 不可用"));
     }
-    // 恢复上次扫描结果（仅当该设备仍在线）
-    if (c.scannedSerial) {
+    // 先恢复全局选中的设备（跨页面持久），再恢复上次扫描结果
+    const globalSerial = getSelectedSerial();
+    if (globalSerial && [...deviceSelect.options].some((o) => o.value === globalSerial)) {
+      deviceSelect.value = globalSerial;
+    } else if (c.scannedSerial) {
       const has = [...deviceSelect.options].some((o) => o.value === c.scannedSerial);
       if (has) {
         deviceSelect.value = c.scannedSerial;
-        if (c.folders.length) renderFolders();
       } else {
         c.folders = [];
         c.selected.clear();
         c.scannedSerial = "";
       }
+    }
+    if (deviceSelect.value && c.scannedSerial === deviceSelect.value && c.folders.length) {
+      renderFolders();
     }
   }
 
@@ -348,6 +354,7 @@ export async function mediaView(kind: MediaKind): Promise<HTMLElement> {
 
   deviceSelect.addEventListener("change", () => {
     const v = deviceSelect.value;
+    setSelectedSerial(v);
     if (v && v !== c.scannedSerial) {
       c.folders = [];
       c.selected.clear();

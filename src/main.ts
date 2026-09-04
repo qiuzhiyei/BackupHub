@@ -4,6 +4,7 @@ import { renderIcons } from "./icons";
 import * as api from "./api";
 import type { ProgressPayload } from "./types";
 import { deviceLabel } from "./views/components";
+import { setSelectedSerial } from "./state";
 
 const THEME_KEY = "backuphub-theme";
 
@@ -108,6 +109,7 @@ async function openWifiDialog(): Promise<void> {
     if (connBtn) { connBtn.textContent = "连接中…"; (connBtn as HTMLButtonElement).disabled = true; }
     try {
       const name = await api.wifiConnect(addr);
+      setSelectedSerial(addr);
       toast("已连接：" + name, "success");
       backdrop.remove();
       void refreshTopbarStatus();
@@ -152,6 +154,7 @@ async function openWifiDialog(): Promise<void> {
             if (btn) { btn.textContent = "连接中…"; btn.disabled = true; }
             try {
               const name = await api.wifiConnect(d.addr);
+              setSelectedSerial(d.addr);
               toast("已连接：" + name, "success");
               backdrop.remove();
               void refreshTopbarStatus();

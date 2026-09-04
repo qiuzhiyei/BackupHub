@@ -3,9 +3,11 @@ import { navigate } from "../router";
 import * as api from "../api";
 import type { BackupOptions, DeviceStatus, DeviceRecord, ProgressPayload } from "../types";
 import { emptyState, pageHeader, deviceLabel } from "./components";
+import { getSelectedSerial, setSelectedSerial } from "../state";
 
 export async function backupView(p: { query: URLSearchParams }): Promise<HTMLElement> {
-  const preSerial = p.query.get("serial") || "";
+  const preSerial = p.query.get("serial") || getSelectedSerial();
+  setSelectedSerial(preSerial);
 
   const wrap = el("div", { class: "page" },
     pageHeader("短信/通话/通讯录备份"),
@@ -59,6 +61,7 @@ export async function backupView(p: { query: URLSearchParams }): Promise<HTMLEle
       class: `picker-card ${active ? "active" : ""}`,
       onclick: () => {
         selectedSerial = d.serial;
+        setSelectedSerial(d.serial);
         renderPicker();
         renderForm();
       },
