@@ -2,7 +2,6 @@ import { el, esc, fmtDate, fmtDateShort, dateToMsStart, dateToMsEnd, toast } fro
 import * as api from "../api";
 import { confirmDialog, promptDialog } from "../modal";
 import type { BackupSnapshot } from "../types";
-
 export interface Filters {
   search: string;
   dateFrom: number | null;
@@ -163,15 +162,20 @@ export function statChip(label: string, value: string | number, ico = ""): HTMLE
 
 export { fmtDateShort };
 
-/** 统一的设备显示名：品牌 型号 序列号（如 Xiaomi 23116PN5BC abc123），方便区分同型号设备 */
+/** 统一的设备显示名：品牌 型号 序列号（如 Xiaomi 23116PN5BC 9037f7b7）
+ *  唯一入口：所有显示设备名的地方都调这个函数，改一处全改 */
 export function deviceLabel(d: { brand?: string; model?: string; serial: string }): string {
   const brand = d.brand?.trim() || "";
   const model = d.model?.trim() || "";
   const serial = d.serial?.trim() || "";
-  // 型号以品牌开头（如 "Xiaomi 14 Pro" 以 "Xiaomi" 开头）则不重复加品牌
   const skipBrand = model && brand && model.toLowerCase().startsWith(brand.toLowerCase());
   const bm = (skipBrand ? model : [brand, model].filter(Boolean).join(" ")).trim();
   return bm ? `${bm} ${serial}` : serial;
+}
+
+/** 从 BackupSnapshot 提取设备显示名（统一入口，不再各自拼） */
+export function snapshotDeviceLabel(s: BackupSnapshot): string {
+  return deviceLabel({ brand: s.device_brand, model: s.device_model, serial: s.device_serial });
 }
 
 /** 紧凑分页器：上一页/下一页 + 跳转到第几页（无数字条、无首页末页） */
@@ -229,8 +233,8 @@ export function createSnapshotRow(
     el("div", { class: "snap-time" },
       el("div", { class: "snap-date" }, fmtDate(s.created_at)),
       opts.showDevice
-        ? el("div", { class: "snap-name" }, opts.deviceName || s.custom_name || "—")
-        : el("div", { class: "snap-name" }, s.custom_name || "—"),
+        ? el("div", { class: "snap-name" }, opts.deviceName || snapshotDeviceLabel(s))
+        : el("div", { class: "snap-name" }, s.note ? esc(s.note) : fmtDate(s.created_at)),
     ),
     el("div", { class: "snap-stats" },
       ...(s.kind === "PHOTO" || s.kind === "VIDEO"

@@ -2,7 +2,7 @@ import { el, esc, fmtDate, fmtDuration, toast } from "../dom";
 import { navigate } from "../router";
 import * as api from "../api";
 import type { BackupSnapshot, CallLog, Contact, PageResult, Sms, SmsThread } from "../types";
-import { createFilterBar, createCompactPager, createPagination, emptyState, pageHeader, deviceLabel } from "./components";
+import { createFilterBar, createCompactPager, createPagination, emptyState, pageHeader, snapshotDeviceLabel } from "./components";
 import { promptDialog } from "../modal";
 
 type Tab = "sms" | "calls" | "contacts";
@@ -48,7 +48,7 @@ export async function snapshotView(p: { params: Record<string, string> }): Promi
       }
     });
     wrap.replaceChildren(
-      pageHeader(s.custom_name || deviceLabel({ brand: s.device_brand, model: s.device_model, serial: s.device_serial }) || `${word}备份`,
+      pageHeader(snapshotDeviceLabel(s) || `${word}备份`,
         el("button", { class: "btn btn-ghost btn-sm", onclick: () => navigate(`#/devices/${encodeURIComponent(s.device_serial)}`) }, "← 备份历史"),
       ),
       el("div", { class: "snap-meta" },
@@ -114,7 +114,7 @@ export async function snapshotView(p: { params: Record<string, string> }): Promi
   const pageEl = el("div", { class: "tab-pagination" });
 
   wrap.replaceChildren(
-    pageHeader(s.custom_name || deviceLabel({ brand: s.device_brand, model: s.device_model, serial: s.device_serial }) || "备份快照",
+    pageHeader(snapshotDeviceLabel(s) || "备份快照",
       el("button", { class: "btn btn-ghost btn-sm", onclick: () => navigate(`#/devices/${encodeURIComponent(s.device_serial)}`) }, "← 备份历史"),
     ),
     el("div", { class: "snap-meta" },

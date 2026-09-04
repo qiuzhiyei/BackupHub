@@ -1,106 +1,138 @@
-import { el } from "../dom";
+import { el, esc, fmtDate } from "../dom";
 import { navigate } from "../router";
 import * as api from "../api";
-import type { BackupSnapshot, DeviceRecord } from "../types";
-import { emptyState, pageHeader, createSnapshotRow, deviceLabel } from "./components";
-import { toast } from "../dom";
+import type { BackupSnapshot } from "../types";
+import { emptyState, pageHeader, createSnapshotRow, snapshotDeviceLabel } from "./components";
 
 export async function dataView(): Promise<HTMLElement> {
-  const list = el("div", { class: "snapshot-list" }, emptyState("加载中…"));
-  const filterSelect = el("select", { class: "input filter-device" }) as HTMLSelectElement;
-  const searchInput = el("input", {
-    class: "input filter-search",
-    type: "search",
-    placeholder: "按备注/设备名搜索…",
-  }) as HTMLInputElement;
-
+  const wrap = el("div", { class: "page" });
   let allSnaps: BackupSnapshot[] = [];
-  let devices: DeviceRecord[] = [];
-  let serialFilter = "";
-
-  function nameOf(s: BackupSnapshot): string {
-    const dev = devices.find((d) => d.serial === s.device_serial);
-    return s.custom_name || dev?.custom_name || deviceLabel({ brand: s.device_brand, model: s.device_model, serial: s.device_serial });
-  }
-
-  function render() {
-    const kw = searchInput.value.trim().toLowerCase();
-    const filtered = allSnaps
-      .filter((s) => !serialFilter || s.device_serial === serialFilter)
-      .filter((s) => {
-        if (!kw) return true;
-        return (
-          (s.note || "").toLowerCase().includes(kw) ||
-          nameOf(s).toLowerCase().includes(kw)
-        );
-      })
-      .sort((a, b) => b.created_at - a.created_at);
-
-    if (!filtered.length) {
-      list.replaceChildren(emptyState("没有匹配的备份", "试试调整筛选或搜索条件"));
-      return;
-    }
-    list.replaceChildren(...filtered.map((s) =>
-      createSnapshotRow(s, {
-        onReload: () => void load(),
-        onOpen: (id) => navigate(`#/snapshot/${encodeURIComponent(id)}`),
-        showDevice: true,
-        deviceName: nameOf(s),
-      }),
-    ));
-  }
+  let view: "devices" | "snapshots" = "devices";
+  let currentDeviceSerial = "";
 
   async function load() {
     try {
-      devices = await api.listDeviceRecords();
-    } catch {
-      devices = [];
-    }
-    try {
       allSnaps = await api.listSnapshots();
     } catch (e) {
-      list.replaceChildren(emptyState("加载失败", String(e)));
+      wrap.replaceChildren(pageHeader("查看数据"), emptyState("加载失败", String(e)));
       return;
     }
-    filterSelect.replaceChildren(
-      el("option", { value: "" }, "全部设备"),
-      ...devices.map((d) =>
-        el("option", { value: d.serial }, d.custom_name || d.model || d.serial),
-      ),
-    );
     render();
   }
 
-  filterSelect.addEventListener("change", () => {
-    serialFilter = filterSelect.value;
-    render();
-  });
-  searchInput.addEventListener("input", () => render());
-
-  const importBtn = el("button", { class: "btn btn-primary" }, "⬆ 导入备份");
-  importBtn.onclick = async () => {
-      const dir = await api.pickFolder();
-    if (!dir) return;
-    try {
-      const snap = await api.importSnapshot(dir);
-      toast(
-        `已导入：${snap.custom_name || snap.device_model}（短信 ${snap.sms_count} · 通话 ${snap.call_count} · 联系人 ${snap.contact_count}）`,
-        "success",
-      );
-      void load();
-    } catch (e) {
-      toast("导入失败: " + String(e), "error");
+  function render() {
+    if (view === "devices") {
+      renderDeviceList();
+    } else {
+      renderSnapshotList();
     }
-  };
+  }
+
+  // 设备列表：按设备分组，点击进入该设备的备份列表
+  function renderDeviceList() {
+    // 按序列号分组快照
+    const groups = new Map<string, BackupSnapshot[]>();
+    for (const s of allSnaps) {
+      const arr = groups.get(s.device_serial) || [];
+      arr.push(s);
+      groups.set(s.device_serial, arr);
+    }
+
+    if (!groups.size) {
+      wrap.replaceChildren(
+        pageHeader("查看数据"),
+        emptyState("还没有备份记录", "去「设备」页选择设备开始备份"),
+      );
+      return;
+    }
+
+    // 按最近备份时间排序
+    const deviceList = [...groups.entries()].sort((a, b) => {
+      const aLast = Math.max(...a[1].map((s) => s.created_at));
+      const bLast = Math.max(...b[1].map((s) => s.created_at));
+      return bLast - aLast;
+    });
+
+    const grid = el("div", { class: "card-grid" },
+      ...deviceList.map(([serial, snaps]) => {
+        const first = snaps[0];
+        const name = snapshotDeviceLabel(first);
+        const lastBackup = Math.max(...snaps.map((s) => s.created_at));
+        const photoCount = snaps.filter((s) => s.kind === "PHOTO").length;
+        const videoCount = snaps.filter((s) => s.kind === "VIDEO").length;
+        const commCount = snaps.filter((s) => s.kind === "COMM").length;
+
+        return el("div", {
+          class: "card record-card",
+          onclick: () => {
+            currentDeviceSerial = serial;
+            view = "snapshots";
+            render();
+          },
+        },
+          el("div", { class: "card-top" },
+            el("div", { class: "card-icon" }, el("i", { "data-lucide": "smartphone" })),
+            el("div", { class: "card-info" },
+              el("div", { class: "card-title" }, esc(name)),
+              el("div", { class: "card-sub" }, `${snaps.length} 次备份`),
+            ),
+          ),
+          el("div", { class: "card-meta" },
+            el("div", { class: "meta-line" }, `最近备份: ${fmtDate(lastBackup)}`),
+            el("div", { class: "meta-line" }, commCount > 0 ? `短信/通话/通讯录 ${commCount} 次` : ""),
+            el("div", { class: "meta-line" }, photoCount > 0 ? `照片 ${photoCount} 次` : ""),
+            el("div", { class: "meta-line" }, videoCount > 0 ? `视频 ${videoCount} 次` : ""),
+          ),
+        );
+      }),
+    );
+
+    wrap.replaceChildren(
+      pageHeader("查看数据",
+        el("button", { class: "btn btn-ghost btn-sm", onclick: () => void load() }, "刷新"),
+      ),
+      el("div", { class: "section-hint", style: { marginBottom: "12px" } }, "点击设备卡片查看该设备的所有备份记录"),
+      grid,
+    );
+    void apiOnRender();
+  }
+
+  // 备份列表：某台设备的所有备份
+  function renderSnapshotList() {
+    const snaps = allSnaps
+      .filter((s) => s.device_serial === currentDeviceSerial)
+      .sort((a, b) => b.created_at - a.created_at);
+
+    if (!snaps.length) {
+      wrap.replaceChildren(
+        pageHeader("查看数据"),
+        emptyState("该设备没有备份记录"),
+      );
+      return;
+    }
+
+    const first = snaps[0];
+    wrap.replaceChildren(
+      pageHeader(snapshotDeviceLabel(first),
+        el("button", { class: "btn btn-ghost btn-sm", onclick: () => { view = "devices"; render(); } }, "← 返回设备列表"),
+      ),
+      el("div", { class: "snapshot-list" },
+        ...snaps.map((s) =>
+          createSnapshotRow(s, {
+            onReload: () => void load(),
+            onOpen: (id) => navigate(`#/snapshot/${encodeURIComponent(id)}`),
+          }),
+        ),
+      ),
+    );
+    void apiOnRender();
+  }
 
   void load();
-  return el("div", { class: "page" },
-    pageHeader("查看数据", importBtn),
-    el("div", { class: "filter-bar" },
-      el("div", { class: "filter-search-wrap" }, searchInput),
-      el("span", { class: "filter-sep" }, "设备"),
-      filterSelect,
-    ),
-    list,
-  );
+  return wrap;
+}
+
+// 触发图标渲染（router 也会调，这里补一次确保卡片图标显示）
+function apiOnRender(): void {
+  // router 的 renderIcons 已经会调，这里不需要额外操作
 }

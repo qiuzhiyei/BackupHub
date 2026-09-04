@@ -2,7 +2,7 @@ import { el, esc, fmtDate } from "../dom";
 import { navigate } from "../router";
 import * as api from "../api";
 import type { BackupSnapshot, DeviceRecord, DeviceStatus } from "../types";
-import { emptyState, pageHeader, statChip, barRow, deviceLabel } from "./components";
+import { emptyState, pageHeader, statChip, barRow, deviceLabel, snapshotDeviceLabel } from "./components";
 
 let pollTimer: number | undefined;
 
@@ -18,7 +18,7 @@ function stateBadge(state: string): HTMLElement {
 }
 
 function recentRow(s: BackupSnapshot): HTMLElement {
-  const name = s.custom_name || s.device_model || "—";
+  const name = snapshotDeviceLabel(s);
   return el("div", { class: "recent-row", onclick: () => navigate(`#/snapshot/${encodeURIComponent(s.id)}`) },
     el("div", { class: "recent-main" },
       el("div", { class: "recent-name" }, esc(name)),
