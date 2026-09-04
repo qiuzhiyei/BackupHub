@@ -3,7 +3,7 @@ import { navigate } from "../router";
 import * as api from "../api";
 import type { BackupSnapshot, PhotoFolder, ProgressPayload } from "../types";
 import { emptyState, pageHeader } from "./components";
-import { getSelectedSerial } from "../state";
+import { getSelectedSerial, getSelectedLabel } from "../state";
 
 export type MediaKind = "photos" | "videos";
 
@@ -337,7 +337,7 @@ export async function mediaView(kind: MediaKind): Promise<HTMLElement> {
 
   wrap.replaceChildren(
     pageHeader(`${word}备份`,
-      el("span", { class: "section-hint" }, `设备：${serial}`),
+      el("span", { class: "section-hint" }, `设备：${getSelectedLabel()}`),
     ),
     el("div", { class: "panel" },
       el("div", { class: "form-row row-inline" },

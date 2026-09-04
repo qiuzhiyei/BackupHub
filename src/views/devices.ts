@@ -3,7 +3,7 @@ import { navigate } from "../router";
 import * as api from "../api";
 import type { DeviceStatus } from "../types";
 import { emptyState, pageHeader, deviceLabel } from "./components";
-import { getSelectedSerial, setSelectedSerial } from "../state";
+import { getSelectedSerial, setSelectedSerial, setSelectedLabel } from "../state";
 
 function deviceCard(d: DeviceStatus, selected: boolean): HTMLElement {
   const isWifi = d.serial.includes(":");
@@ -11,6 +11,7 @@ function deviceCard(d: DeviceStatus, selected: boolean): HTMLElement {
     class: `card record-card ${selected ? "active" : ""}`,
     onclick: () => {
       setSelectedSerial(d.serial);
+      setSelectedLabel(deviceLabel(d));
       toast("已选择：" + deviceLabel(d), "success");
       navigate("#/backup");
     },
